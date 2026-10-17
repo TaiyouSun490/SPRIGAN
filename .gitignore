@@ -26,6 +26,8 @@ rag-index.log
 asset-store-details.log
 *.safetensors
 stackforge-downloads/
+model-downloads/
+asset-downloads/
 
 .idea/
 .vscode/

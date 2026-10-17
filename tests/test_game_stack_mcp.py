@@ -150,6 +150,10 @@ class StackforgeMcpProtocolTests(unittest.IsolatedAsyncioTestCase):
     async def test_server_lists_read_and_approval_gated_write_tools(self):
         with tempfile.TemporaryDirectory() as directory:
             server, app = build_mcp_server(str(Path(directory) / "catalog.db"))
+            # Transport assertions should not depend on a locally installed embedding runtime.
+            dependency_fixture = patch.object(app.repository, "_missing_embedding_dependencies", return_value=[])
+            dependency_fixture.start()
+            self.addCleanup(dependency_fixture.stop)
             try:
                 async with Client(server) as client:
                     result = await client.list_tools()

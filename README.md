@@ -21,6 +21,9 @@ Fafnirは、「作りたいゲーム」を文章で渡すと、Unityの所有ア
 
 ## 何ができるか
 
+- **[Asset Hub：所有素材・CC0・AI生成をまとめる](docs/ASSET_HUB.md)**：3D Asset Serverの横断検索・取得に、BOOTH・Fab・Humbleの全件所有ライブラリ同期（再開・定期更新）、主要購入サイトの素材取込、SE/BGM、Tripo・ElevenLabs・Marbleの生成ジョブ、Suno書出し音源管理、統合した接続設定を追加。
+
+- **[3Dモデルの検索・採用判断・取得](docs/MODEL_DISCOVERY.md)**：Sketchfab／Poly Haven、ローカルのグラフ保存、Jev／AnyJev連携、Dots向けMCPプラグイン
 - Unity Editorへログインしているアカウントの**表示中・非表示を含むMy Assets**をローカルへ同期する
 - 日本語の用途説明から、英語名を含む所有アセットを多言語Embeddingで検索する
 - Unity ProjectのVersion、Render Pipeline、Input System、導入済みpackageと候補を照合する

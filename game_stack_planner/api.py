@@ -135,6 +135,8 @@ class GameStackApplication:
         self.asset_store_downloader = AssetStoreDownloadCoordinator(self.repository)
         self.asset_store_importer = AssetStoreImportCoordinator(self.asset_store_downloader)
         self.unity_bridge = BridgeSetupCoordinator(self.repository)
+        self._model_catalog = None
+        self._asset_hub = None
         self._automatic_rag_indexing = False
         self._rag_thread_lock = threading.Lock()
         self._rag_cancel = threading.Event()
@@ -155,6 +157,10 @@ class GameStackApplication:
         self._asset_store_detail_launch_error = ""
 
     def close(self) -> None:
+        if self._asset_hub is not None:
+            self._asset_hub.close()
+        if self._model_catalog is not None:
+            self._model_catalog.graph.close()
         self._my_assets_watch_stop.set()
         watcher = self._my_assets_watch_thread
         if watcher is not None and watcher.is_alive():
@@ -171,6 +177,53 @@ class GameStackApplication:
             self.repository.cancel_current_rag_index()
         else:
             self.repository.close()
+
+    def assets(self, action: str, payload: dict[str, Any]) -> dict[str, Any]:
+        from .asset_hub import AssetHub
+        from .model_sources import ModelError
+        try:
+            with self.repository._lock:
+                if self._asset_hub is None:
+                    self._asset_hub = AssetHub(self.repository.path, legacy=self._owned_hub_assets)
+            return self._asset_hub.dispatch(action, payload)
+        except ModelError as exc:
+            raise ApiError(400, "asset_hub_operation_failed", str(exc)) from None
+
+    def _owned_hub_assets(self, query, limit):
+        """Bridge existing My Assets records without changing their ownership evidence."""
+        values = self.repository.list_candidates(query=query, source="asset_store", ownership="owned", limit=limit)
+        result = []
+        for candidate in values:
+            item = {"id": candidate.id, "source": "asset_store", "title": candidate.title,
+                    "url": candidate.url, "type": "pack", "description": candidate.description,
+                    "author": "", "tags": list(candidate.tags), "formats": ["unitypackage"], "local_files": [],
+                    "downloadable": False, "download_route": "existing_unity_editor_bridge",
+                    "license": {"name": candidate.license or "asset-store-terms", "url": "", "attributionRequired": None},
+                    "rights": {"basis": "owned", "evidence_kind": "existing_unity_catalog", "purchase_verified": False,
+                               "engine_restriction": "unknown", "license_reviewed": False}}
+            with self._asset_hub.lock, self._asset_hub.db:
+                try:
+                    previous = self._asset_hub.asset(candidate.id)
+                except ValueError:
+                    previous = None
+                if previous:
+                    previous.update(title=candidate.title, description=candidate.description, tags=list(candidate.tags))
+                    item = previous
+                self._asset_hub._save(item)
+            result.append(item)
+        return result
+
+    def models(self, action: str, payload: dict[str, Any]) -> dict[str, Any]:
+        from .model_catalog import ModelCatalog
+        from .model_sources import ModelError
+        try:
+            # The web server can serve two first requests concurrently.
+            with self.repository._lock:
+                if self._model_catalog is None:
+                    self._model_catalog = ModelCatalog(self.repository.path)
+            return self._model_catalog.dispatch(action, payload)
+        except ModelError as exc:
+            raise ApiError(400, "model_operation_failed", str(exc)) from None
 
     def enable_automatic_rag_indexing(self, *, detached: bool = False) -> bool:
         """Start resumable indexing on ordinary long-running UI/MCP startup."""

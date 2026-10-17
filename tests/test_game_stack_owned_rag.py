@@ -402,7 +402,8 @@ class OwnedAssetRagApplicationTests(unittest.TestCase):
         self.assertTrue(started)
         self.assertTrue(self.application.status()["rag_index"]["ready"])
 
-    def test_detached_indexing_uses_an_independent_cli_process(self) -> None:
+    @patch("game_stack_planner.repository.StackRepository._missing_embedding_dependencies", return_value=())
+    def test_detached_indexing_uses_an_independent_cli_process(self, _dependencies) -> None:
         self.application.close()
         database = Path(self.temporary.name) / "detached.db"
         self.application = GameStackApplication(database)
@@ -760,7 +761,8 @@ class OwnedAssetRagNativeMessagingTests(unittest.TestCase):
 
 
 class OwnedAssetRagCliTests(unittest.TestCase):
-    def test_rag_search_reports_explicit_fallback_while_index_is_pending(self) -> None:
+    @patch("game_stack_planner.repository.StackRepository._missing_embedding_dependencies", return_value=())
+    def test_rag_search_reports_explicit_fallback_while_index_is_pending(self, _dependencies) -> None:
         with tempfile.TemporaryDirectory() as directory:
             database = Path(directory) / "catalog.db"
             application = GameStackApplication(database)
@@ -950,26 +952,27 @@ class OwnedAssetRagExtensionStaticTests(unittest.TestCase):
         cls.popup_script = (cls.root / "popup.js").read_text(encoding="utf-8")
         cls.worker = (cls.root / "service_worker.js").read_text(encoding="utf-8")
 
-    def test_extension_keeps_minimal_non_scraping_permissions(self) -> None:
+    def test_extension_keeps_scoped_capture_and_optional_full_sync_permissions(self) -> None:
         self.assertEqual(
-            {"activeTab", "nativeMessaging"},
+            {"activeTab", "nativeMessaging", "scripting", "storage", "alarms"},
             set(self.manifest["permissions"]),
         )
         self.assertNotIn("host_permissions", self.manifest)
         self.assertNotIn("content_scripts", self.manifest)
         for forbidden in (
-            "chrome.scripting",
-            "executeScript",
             "fetch(",
-            "document.",
             "innerHTML",
             "outerHTML",
-            "cookie",
+            "chrome.cookies",
+            "document.cookie",
             "localStorage",
             "sessionStorage",
         ):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, self.worker)
+        self.assertIn('message.action === "hub_capture_library"', self.worker)
+        self.assertIn("getClientRects", self.worker)
+        self.assertIn("scripting.executeScript", self.worker)
 
     def test_popup_has_explicit_user_asserted_owned_rag_action(self) -> None:
         self.assertIn('id="save-owned-rag"', self.popup)

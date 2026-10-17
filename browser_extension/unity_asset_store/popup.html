@@ -39,7 +39,21 @@
       <button id="save-owned-rag" class="owned" disabled>購入済みとしてRAG登録（自己申告）</button>
     </section>
     <button id="open-stackforge" class="secondary">Fafnirを開く</button>
-    <p id="status" role="status">ページ本文・アセット・画像・Cookieは取得しません。</p>
+    <section class="owned-rag">
+      <p class="eyebrow">ALL STORES / OWNED ASSETS</p>
+      <button id="hub-full-sync" class="primary" type="button">BOOTH・Fab・Humbleを全件同期</button>
+      <p id="hub-product">現在の提供元を確認中…</p>
+      <label>購入元<select id="hub-source"></select></label>
+      <label>種類<select id="hub-kind"><option value="model">3Dモデル</option><option value="pack">パック</option><option value="material">素材</option><option value="sfx">SE</option><option value="music">BGM</option><option value="animation">アニメーション</option><option value="other">その他</option></select></label>
+      <button id="hub-current" type="button">この商品を登録候補にする</button>
+      <button id="hub-library" type="button">表示中の購入ライブラリを読込</button>
+      <div id="hub-preview" class="hub-preview"></div>
+      <label class="owned-confirmation"><input id="hub-owned" type="checkbox">選択した素材を自分が所有していることを申告します</label>
+      <button id="hub-save" type="button">選択した所有素材を同期</button>
+      <button id="hub-open" class="secondary" type="button">Asset Hub・接続設定を開く</button>
+      <p>全件同期は専用画面で接続・進捗・再開を管理します。上の「表示中」読込は現在のページのリンクだけを候補にします。</p>
+    </section>
+    <p id="status" role="status">商品情報の登録を待っています。</p>
   </main>
   <footer>RAG/AIに見せる追加情報は、自分で入力した呼び名・メモ・用途だけです。</footer>
 </body>

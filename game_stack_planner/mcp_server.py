@@ -535,17 +535,26 @@ def build_mcp_server(
         description=(
             "Search owned Unity assets, Asset Store candidates, GitHub and OpenUPM; "
             "retrieve evidence for a complete game stack; safely review installs; "
-            "and queue verified-owned downloads through Unity Editor."
+            "and queue verified-owned downloads through Unity Editor. Search Sketchfab and Poly Haven models, "
+            "record evidence and adoption decisions in a local graph, and download attributed model packages."
         ),
         instructions=(
             "Use retrieve_game_stack_evidence before recommending a stack. Explain a "
             "concrete use for every selected candidate. Treat local scores as retrieval "
             "hints, verify relevance yourself, and never invent IDs. Prepare installs "
             "or owned-asset downloads before starting them and show the exact plan to "
-            "the user for approval. Never take over a browser to start a download."
+            "the user for approval. Never take over a browser to start a download. "
+            "For third-party 3D models, use search_3d_models and the model-specific tools directly. "
+            "Keep unknown facts unresolved, actual visual evidence distinct from AI recommendations, "
+            "and model downloads separate from Unity import."
         ),
         version=__version__,
     )
+
+    from .model_mcp import register_model_tools
+    register_model_tools(server, app)
+    from .asset_hub_mcp import register_asset_hub_tools
+    register_asset_hub_tools(server, app)
 
     read_only = ToolAnnotations(
         readOnlyHint=True,

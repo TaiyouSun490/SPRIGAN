@@ -10,6 +10,7 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from .api import ApiError, GameStackApplication
+from .model_sources import ModelError
 
 _MAX_BODY = 1024 * 1024
 _STATIC_ROOT = Path(__file__).with_name("static")
@@ -49,7 +50,7 @@ class PlannerHandler(BaseHTTPRequestHandler):
         self.send_header(
             "Content-Security-Policy",
             "default-src 'self'; script-src 'self'; style-src 'self'; "
-            "img-src 'self' data: https://assetstorev1-prd-cdn.unity3d.com; connect-src 'self'; object-src 'none'; "
+            "img-src 'self' data: https://assetstorev1-prd-cdn.unity3d.com https://media.sketchfab.com https://cdn.polyhaven.com https://3d.shep.bot; connect-src 'self'; media-src 'self'; object-src 'none'; "
             "base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
         )
 
@@ -147,8 +148,89 @@ class PlannerHandler(BaseHTTPRequestHandler):
             return
         parsed = urlsplit(self.path)
         try:
-            if parsed.path == "/api/status":
+            if parsed.path == "/api/models/oauth_callback":
+                query = parse_qs(parsed.query)
+                self.app.models("status", {})
+                return_to = self.app._model_catalog.oauth.return_paths.get(query.get("state", [""])[0], "/models.html")
+                self.app.models("oauth_callback", {"code": query.get("code", [""])[0], "state": query.get("state", [""])[0]})
+                self.send_response(303)
+                self.send_header("Location", return_to)
+                self._security_headers()
+                self.end_headers()
+            elif parsed.path == "/api/status":
                 self._send_json(200, self.app.status())
+            elif parsed.path == "/api/hub/status":
+                result = self.app.assets("status", {})
+                result["sketchfab"] = self.app.models("status", {})
+                self._send_json(200, result)
+            elif parsed.path == "/v1/providers":
+                result = self.app.assets("providers", {})
+                self._send_json(200, {"providers": result["public_sources"], "fafnir": result["owned_and_generation"]})
+            elif parsed.path == "/v1/search":
+                query = parse_qs(parsed.query)
+                try:
+                    result = self.app.assets("search", {"query": query.get("q", [""])[0],
+                        "types": [v for v in query.get("type", [""])[0].split(",") if v],
+                        "providers": [v for v in query.get("providers", [""])[0].split(",") if v],
+                        "rights": query.get("rights", ["owned_or_cc0"])[0],
+                        "online": query.get("online", ["true"])[0] != "false",
+                        "downloadable_only": query.get("downloadable", ["false"])[0] == "true",
+                        "limit": int(query.get("limit", ["20"])[0]), "offset": int(query.get("offset", ["0"])[0])})
+                except ValueError:
+                    raise ApiError(400, "invalid_request", "Invalid pagination.") from None
+                self._send_json(200, result)
+            elif parsed.path.startswith("/v1/assets/"):
+                from .asset_hub_sources import cc0
+                tail = parsed.path.removeprefix("/v1/assets/")
+                endpoint = ""
+                for suffix in ("/files", "/download"):
+                    if tail.endswith(suffix):
+                        tail, endpoint = tail[:-len(suffix)], suffix
+                        break
+                asset = self.app.assets("asset", {"asset_id": unquote(tail)})
+                query = parse_qs(parsed.query)
+                format = query.get("format", [""])[0]
+                resolution = query.get("resolution", ["2k"])[0]
+                if endpoint and asset["rights"]["basis"] == "cc0":
+                    fresh, files = self.app._asset_hub.upstream.detail(asset["id"], format, resolution)
+                    if not cc0(fresh):
+                        raise ApiError(409, "licence_changed", "Refresh the asset licence before downloading.")
+                    if endpoint == "/download":
+                        self.send_response(302)
+                        self.send_header("Location", self.app._asset_hub.upstream.bundle(asset["id"], format, resolution))
+                        self._security_headers()
+                        self.end_headers()
+                    else:
+                        self._send_json(200, files)
+                elif endpoint == "/download":
+                    raise ApiError(400, "official_workflow_required", "Use a prepared local acquisition or the official store workflow.")
+                else:
+                    self._send_json(200, {"files": asset.get("local_files", [])} if endpoint else asset)
+            elif parsed.path in {"/api/hub/preview", "/api/hub/file"}:
+                from .asset_hub import MEDIA
+                query = parse_qs(parsed.query)
+                asset = self.app.assets("asset", {"asset_id": query.get("asset_id", [""])[0]})
+                try:
+                    index = int(query.get("index", ["0"])[0])
+                    if index < 0:
+                        raise ValueError()
+                    entry = asset["local_files"][index]
+                    path = self.app._asset_hub.resolve_file(entry)
+                except (ValueError, IndexError, KeyError, ModelError):
+                    raise ApiError(404, "not_found", "Audio file is unavailable.") from None
+                if parsed.path.endswith("/preview") and path.suffix.lower() not in MEDIA:
+                    raise ApiError(415, "unsupported_media_type", "Only library audio files can be previewed.")
+                self.send_response(200)
+                self.send_header("Content-Type", mimetypes.guess_type(path.name)[0] or "application/octet-stream")
+                if parsed.path.endswith("/file"):
+                    from urllib.parse import quote
+                    self.send_header("Content-Disposition", "attachment; filename*=UTF-8''" + quote(path.name))
+                self.send_header("Content-Length", str(path.stat().st_size))
+                self._security_headers()
+                self.end_headers()
+                with path.open("rb") as stream:
+                    for chunk in iter(lambda: stream.read(65536), b""):
+                        self.wfile.write(chunk)
             elif parsed.path == "/api/catalog":
                 query = parse_qs(parsed.query, keep_blank_values=True)
                 self._send_json(200, self.app.catalog(
@@ -187,7 +269,7 @@ class PlannerHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         route = urlsplit(self.path).path
-        install_route = route.startswith("/api/install/")
+        install_route = route.startswith("/api/install/") or route.startswith("/api/models/") or route.startswith("/api/hub/")
         trusted = (
             self._trusted_host()
             and self._trusted_origin()
@@ -200,7 +282,46 @@ class PlannerHandler(BaseHTTPRequestHandler):
             return
         try:
             payload = self._json_body()
-            if route == "/api/project/scan":
+            if route.startswith("/api/hub/"):
+                action = route.removeprefix("/api/hub/")
+                if action in {"connection_setup", "connection_disconnect"}:
+                    self.app.assets("status", {})
+                    if action == "connection_setup":
+                        if set(payload) != {"provider", "key", "remember"}:
+                            raise ApiError(400, "invalid_request", "Invalid connection setup fields.")
+                        result = self.app._asset_hub.credentials.setup(payload["provider"], payload["key"], payload["remember"])
+                    else:
+                        if set(payload) != {"provider"}:
+                            raise ApiError(400, "invalid_request", "Invalid disconnect fields.")
+                        result = self.app._asset_hub.credentials.disconnect(payload["provider"])
+                else:
+                    result = self.app.assets(action, payload)
+            elif route.startswith("/api/models/"):
+                action = route.removeprefix("/api/models/")
+                # Credential entry is local UI only; never pass secrets to graph/CLI/MCP.
+                if action in {"oauth_setup", "oauth_disconnect"}:
+                    self.app.models("status", {})
+                    oauth = self.app._model_catalog.oauth
+                    if action == "oauth_setup":
+                        if set(payload) != {"client_id", "client_secret", "redirect_uri", "remember"}:
+                            raise ApiError(400, "invalid_request", "Invalid OAuth setup fields.")
+                        expected = f"http://127.0.0.1:{self.server.server_port}/api/models/oauth_callback"
+                        if payload["redirect_uri"] != expected:
+                            raise ApiError(400, "invalid_request", "Use the callback URL shown by this FAFNIR server.")
+                        try:
+                            result = oauth.setup({k: payload[k] for k in ("client_id", "client_secret", "redirect_uri")}, payload["remember"])
+                        except ModelError as exc:
+                            raise ApiError(400, "authentication_setup", str(exc)) from None
+                    else:
+                        if payload:
+                            raise ApiError(400, "invalid_request", "Disconnect takes no fields.")
+                        try:
+                            result = oauth.disconnect()
+                        except ModelError as exc:
+                            raise ApiError(400, "authentication_setup", str(exc)) from None
+                else:
+                    result = self.app.models(action, payload)
+            elif route == "/api/project/scan":
                 result = self.app.scan(payload)
             elif route == "/api/asset-store/cache/scan":
                 result = self.app.scan_cache(payload)
@@ -253,6 +374,8 @@ class PlannerHandler(BaseHTTPRequestHandler):
             self._send_json(200, result)
         except ApiError as exc:
             self._send_json(*_error(exc.status, exc.code, str(exc), exc.details))
+        except ModelError as exc:
+            self._send_json(*_error(400, "asset_operation_failed", str(exc)))
         except (BrokenPipeError, ConnectionResetError):
             return
         except Exception:
