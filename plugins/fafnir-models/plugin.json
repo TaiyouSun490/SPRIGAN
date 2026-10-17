@@ -1,0 +1,20 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "fafnir-models",
+  "version": "0.1.0",
+  "description": "Search and review Sketchfab and Poly Haven models with FAFNIR's persistent local graph and attributed downloads.",
+  "author": { "name": "Taiyou_Sun" },
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "FAFNIR 3D Models",
+        "shortDescription": "Find, review, download models",
+        "longDescription": "Search 3D models, compare actual evidence, record adoption decisions, and download attributed packages into a local cache. Optional TypeSafe Jev and local AnyJev evaluators.",
+        "developerName": "Taiyou_Sun",
+        "category": "Productivity",
+        "capabilities": ["Interactive"],
+        "defaultPrompt": "Find 3D models for my scene, compare their visual fit and cost, and record a shortlist in FAFNIR."
+      }
+    }
+  }
+}

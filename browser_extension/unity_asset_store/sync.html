@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FAFNIR — 購入サイトを全件同期</title>
+  <link rel="stylesheet" href="sync.css">
+  <script src="library_adapters.js" defer></script><script src="sync.js" defer></script>
+</head>
+<body>
+  <header><img src="icons/icon48.png" width="40" height="40" alt=""><div><small>FAFNIR / OWNED LIBRARY</small><h1>購入した素材を、ひとつのライブラリへ。</h1></div></header>
+  <main>
+    <p class="intro">公式サイトにログインし、3サイトの購入ライブラリを最後まで取り込みます。同期中はこの画面を閉じても続行します。</p>
+    <ol class="steps"><li>各サイトに接続してログイン</li><li>対象を選んでまとめて同期</li><li>Asset Hubで素材を検索</li></ol>
+    <section aria-labelledby="sources-title"><h2 id="sources-title">接続する購入サイト</h2><div id="sources" class="sources"></div></section>
+    <form id="start-form">
+      <label class="check"><input id="owned" type="checkbox" required>自分の購入ライブラリを取り込みます</label>
+      <div class="settings"><label>自動更新<select id="hours"><option value="0">今回だけ</option><option value="6">6時間ごと</option><option value="24" selected>1日ごと</option><option value="168">1週間ごと</option></select></label>
+      <details><summary>詳細設定</summary><label>1サイトの走査上限<input id="max-pages" type="number" value="10000" min="10" max="100000" required></label><p>上限に達した場合は未完了として停止します。</p><label>Asset HubのURL<input id="hub-url" type="url" value="http://127.0.0.1:8770/hub.html"></label></details></div>
+      <div class="actions"><button id="start" type="submit">選択したサイトをまとめて全件同期</button><button id="schedule-off" class="secondary" type="button">定期更新をオフ</button><button id="hub" class="secondary" type="button">Asset Hubを開く</button></div>
+    </form>
+    <p id="status" role="status" aria-live="polite">接続状態を確認しています…</p>
+    <section class="notes"><h2>取り込む情報</h2><p>商品名・提供元・商品ID・種類・利用条件です。BOOTHは購入品と受取ギフト、Fabは取得済みライブラリ、Humbleは全注文のバンドル内アイテムを含みます。既存のメモ・利用条件の確認・ファイル関連付けは残します。</p>
+      <p>素材ファイルはダウンロードしません。パスワード・Cookie・注文キーはFAFNIRへ送りません。ログインは各サイトの画面で行い、ブラウザー内のセッションで読み取り専用の取得を行います。</p>
+      <p>ブラウザー起動中に動作します。ログイン切れ・アクセス制限・仕様変更時は停止して案内します。完了表示は最後まで走査した場合のみです。同期で見つからなかった既存素材は削除しません。</p>
+    </section>
+  </main>
+</body>
+</html>

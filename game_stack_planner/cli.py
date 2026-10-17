@@ -41,6 +41,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--json", action="store_true", help="Print JSON output.")
     subparsers = parser.add_subparsers(dest="command")
 
+    model = subparsers.add_parser("models", help="Search, review, graph and download 3D models; see docs/MODEL_DISCOVERY.md.")
+    model.add_argument("action", choices=["status", "search", "detail", "graph", "evaluate", "decide", "prepare_download", "download", "download_status"])
+    model.add_argument("--request", help="UTF-8 JSON payload file; omitted means an empty object.")
+
+    hub = subparsers.add_parser("assets", help="Owned/CC0 models, materials, HDRIs, audio and generation jobs.")
+    hub.add_argument("action", choices=["status", "providers", "search", "asset", "register_root", "import_owned", "export", "prepare_download", "download", "operation", "prepare_generation", "generate", "poll_generation", "collect_generation"])
+    hub.add_argument("--request", help="UTF-8 JSON request file. Provider keys are entered only in the local Connections UI or environment.")
+
     ui = subparsers.add_parser("ui", help="Open the local graphical interface.")
     ui.add_argument("--port", type=int, default=8770)
     ui.add_argument("--no-browser", action="store_true")
@@ -250,7 +258,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     app = GameStackApplication(args.db)
     try:
-        if args.command == "scan":
+        if args.command in {"models", "assets"}:
+            from pathlib import Path
+            try:
+                payload = json.loads(Path(args.request).read_text(encoding="utf-8-sig")) if args.request else {}
+            except (OSError, ValueError):
+                raise ApiError(400, "invalid_request", "Could not read the model request JSON file.") from None
+            result = app.models(args.action, payload) if args.command == "models" else app.assets(args.action, payload)
+        elif args.command == "scan":
             result = app.scan({"path": args.project})
         elif args.command == "scan-cache":
             result = app.scan_cache({

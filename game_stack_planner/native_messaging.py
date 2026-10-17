@@ -1,4 +1,4 @@
-"""Native Messaging bridge for the minimal Unity Asset Store extension."""
+"""Native Messaging bridge for Unity capture and owned-library metadata sync."""
 
 from __future__ import annotations
 
@@ -166,6 +166,42 @@ def handle_message(
     application: GameStackApplication,
 ) -> dict[str, Any]:
     action = message.get("action")
+    library_actions = {
+        "hub_library_begin": ("begin_library_sync", {"run_id", "source", "owned_confirmation"}),
+        "hub_library_page": ("apply_library_sync_page", {"run_id", "page_index", "items", "terminal", "coverage"}),
+        "hub_library_state": ("set_library_sync_state", {"run_id", "state", "error_code"}),
+        "hub_library_status": ("library_sync_status", {"run_id"}),
+    }
+    if action in library_actions:
+        operation, fields = library_actions[action]
+        _message_fields(message, action=action, allowed={"action", "schema_version"} | fields)
+        result = application.assets(operation, {k: v for k, v in message.items() if k in fields})
+        return {"ok": True, "schema_version": SCHEMA_VERSION, "result": result}
+    if action == "get_asset_hub_capture_context":
+        from .asset_hub_sources import STORES, store_url
+        from .model_sources import ModelError
+        _message_fields(message, action=action, allowed={"action", "schema_version", "url", "title"})
+        from urllib.parse import urlsplit
+        product, page_source = None, None
+        try:
+            page = urlsplit(str(message.get("url", "")))
+            if page.scheme == "https" and page.hostname:
+                page_source = next((k for k, v in STORES.items() if any(page.hostname == d or page.hostname.endswith("." + d) for d in v[3])), None)
+        except ValueError:
+            pass
+        for source in STORES:
+            try:
+                url = store_url(source, message.get("url", ""))
+                product = {"source": source, "url": url, "title": str(message.get("title", ""))[:1000]}
+                break
+            except ModelError:
+                continue
+        return {"ok": True, "schema_version": SCHEMA_VERSION, "product": product, "page_source": page_source,
+                "sources": [{"id": k, "name": v[0], "domains": list(v[3])} for k, v in STORES.items()]}
+    if action == "sync_asset_hub_owned":
+        _message_fields(message, action=action, allowed={"action", "schema_version", "source", "items", "owned_confirmation"})
+        result = application.assets("import_owned", {"source": message.get("source"), "items": message.get("items"), "owned_confirmation": message.get("owned_confirmation")})
+        return {"ok": True, "schema_version": SCHEMA_VERSION, "count": result["count"], "purchase_verified": False}
     if action == "get_stackforge_status":
         _message_fields(
             message,

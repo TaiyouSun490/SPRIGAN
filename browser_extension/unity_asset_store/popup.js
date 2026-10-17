@@ -1,5 +1,7 @@
 "use strict";
 
+document.querySelector("#hub-full-sync").addEventListener("click", () => chrome.runtime.openOptionsPage());
+
 const SCHEMA_VERSION = 1;
 const GUI_URL = "http://127.0.0.1:8770/";
 const $ = (selector) => document.querySelector(selector);
@@ -145,3 +147,12 @@ refresh().catch((error) => {
   updateActions();
   setStatus(error instanceof Error ? error.message : "初期化に失敗しました。", "error");
 });
+
+let hubContext=null,hubRows=[];
+function hubPreview(rows){hubRows=rows;const root=$("#hub-preview");root.replaceChildren();rows.forEach((row,index)=>{const label=document.createElement("label"),check=document.createElement("input"),text=document.createElement("span");check.type="checkbox";check.dataset.index=String(index);text.textContent=row.title;label.append(check,text);root.append(label);});setStatus(`${rows.length}件の候補。所有している商品だけ選択してください。`);}
+async function hubMessage(data){const r=await chrome.runtime.sendMessage({schema_version:SCHEMA_VERSION,...data});if(!r?.ok)throw Error(r?.error?.message||"Asset Hubへ接続できません。");return r;}
+$("#hub-open").addEventListener("click",()=>chrome.tabs.create({url:GUI_URL+"hub.html"}));
+$("#hub-current").addEventListener("click",()=>{if(hubContext?.product)hubPreview([hubContext.product]);else setStatus("対応する公開商品ページを開いてください。","error");});
+$("#hub-library").addEventListener("click",async()=>{try{const r=await hubMessage({action:"hub_capture_library"}),source=$("#hub-source").value,config=hubContext.sources.find(v=>v.id===source),found=new Map();for(const a of r.links){try{const u=new URL(a.url);if(u.protocol!=="https:"||!config.domains.some(d=>u.hostname===d||u.hostname.endsWith("."+d)))continue;const path=u.pathname;if(source==="booth"&&!/^\/(?:(?:ja|en)\/)?items\/\d+/.test(path))continue;if(source==="fab"&&!/\/listings\/[a-z0-9-]+/i.test(path))continue;if(source==="humble"&&!/^\/(store|software|books)\//.test(path))continue;if(source==="itchio"&&(!/^[^.]+\.itch\.io$/.test(u.hostname)||path==="/"))continue;if(source==="gumroad"&&!/^\/l\//.test(path))continue;u.search="";u.hash="";found.set(u.href,{url:u.href,title:a.title});}catch{}}hubPreview([...found.values()]);}catch(e){setStatus(e.message,"error");}});
+$("#hub-save").addEventListener("click",async()=>{try{if(!$("#hub-owned").checked)throw Error("所有の申告欄を確認してください。");const rows=[...$("#hub-preview").querySelectorAll("input:checked")].map(c=>({...hubRows[Number(c.dataset.index)],type:$("#hub-kind").value}));rows.forEach(r=>delete r.source);const d=await hubMessage({action:"hub_save_owned",source:$("#hub-source").value,items:rows,owned_confirmation:true});setStatus(`${d.count}件を所有素材として同期しました。`,"success");$("#hub-owned").checked=false;}catch(e){setStatus(e.message,"error");}});
+hubMessage({action:"hub_capture_context"}).then(r=>{hubContext=r;$("#hub-source").replaceChildren(...r.sources.map(s=>{const e=document.createElement("option");e.value=s.id;e.textContent=s.name;return e;}));if(r.page_source)$("#hub-source").value=r.page_source;if(r.product){$("#hub-source").value=r.product.source;$("#hub-product").textContent=r.product.title;}else $("#hub-product").textContent="購入ライブラリなら提供元を選び、一括読込してください。";}).catch(e=>setStatus(e.message,"error"));

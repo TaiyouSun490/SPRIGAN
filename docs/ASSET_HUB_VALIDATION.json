@@ -1,0 +1,74 @@
+{
+  "checked_at": "2026-10-17T09:15:57.635193+00:00",
+  "scope": "FAFNIR Asset Hub extension; local implementation, not published",
+  "automated": {
+    "passed_tests": 118,
+    "passed_subtests": 89,
+    "failed": 0,
+    "javascript_syntax": "passed",
+    "git_diff_check": "passed",
+    "javascript_tests_passed": 23
+  },
+  "live_metadata": {
+    "source": "3D Asset Server / Poly Haven",
+    "query": "forest",
+    "type": "hdri",
+    "results": 2,
+    "sample_asset_id": "polyhaven:autumn_forest_04",
+    "sample_license": "CC0",
+    "prepared_format": "hdr",
+    "prepared_resolution": "1k",
+    "prepared_source_bytes": 1959488,
+    "file_downloaded": false,
+    "last_performed_at": "2026-10-17T08:11:29.824772+00:00"
+  },
+  "gui_fixture_verified": [
+    "owned_before_cc0",
+    "connections_navigation",
+    "sketchfab_initial_setup_guidance_and_focus",
+    "audio_duration_and_voice_id_fields",
+    "download_review_and_cancel",
+    "generation_review_billing_guard_and_cancel"
+  ],
+  "screenshots": [
+    "docs/images/asset-hub-qa.png",
+    "docs/images/asset-hub-connections-qa.png",
+    "docs/images/owned-library-sync-qa.png"
+  ],
+  "not_verified": [
+    "live_purchase_account_sync",
+    "live_sketchfab_oauth_grant",
+    "paid_tripo_elevenlabs_marble_generation",
+    "live_store_library_dom_variants"
+  ],
+  "limitations": [
+    "BOOTH/Fab/Humble use in-browser full-library adapters, not a public OAuth purchase API. Live authenticated store scans remain unverified; other stores use capture/export/import.",
+    "Suno uses exported-file import; no first-party public generation API was verified.",
+    "Runtime MCP processes require restart to load the new source."
+  ],
+  "standalone_unity_builds_run": false,
+  "paid_jobs_submitted": 0,
+  "dependencies_installed": false,
+  "published_to_github": false,
+  "source_sha256": {
+    "game_stack_planner/asset_hub.py": "ac87ef80d24c900f574cc6c972aa5bb5aaf949dab899af8c963308d694e83f49",
+    "game_stack_planner/asset_hub_credentials.py": "bd1ac5e425266bdf73991e4297871c50091afbe8acbe0f890c06a23dd85fd5d9",
+    "game_stack_planner/asset_hub_generators.py": "668b22b30f34b5f93d7f06c215d20bd3188da6df09a430d60aa63f0a6b2f34b0",
+    "game_stack_planner/asset_hub_mcp.py": "229852781b1294305b974455e9dc0107303ec996b4c279fec32fd05120e3a34b",
+    "game_stack_planner/asset_hub_sources.py": "bf40e764ccb25cf1d296af0cc91a576eafb547f39662af8536de84cd29d34514",
+    "game_stack_planner/static/hub.html": "7f0b2fdea0f06a8b475c74a4d9addcee9b20b7dfa73378bdf2f0ec0d629c48ca",
+    "game_stack_planner/static/hub.js": "013c4eeef3d3920a4e77610d9372b419b6bfb21ff46811d0b97ca110d41fd26d",
+    "game_stack_planner/static/hub.css": "9ac4dfd36aa60b26cd53224c14a4a85ae6928d89c03b96c5de4204b5bf0c7103",
+    "game_stack_planner/asset_hub_sync.py": "e04dcc2c54e022b540a062024838e06f6d92223da12bd361cf2386cf057e2da8",
+    "game_stack_planner/native_messaging.py": "ed15a1416ec25b99b240002ae93d48098b6a6e636c6e202fa1b3b0b21902f0bf",
+    "browser_extension/unity_asset_store/manifest.json": "ecc1bbce2786192d537deee2d238b9913a8957b6cf5de1d9287fc6b5e2019e70",
+    "browser_extension/unity_asset_store/service_worker.js": "5e403fe54ec9a3e030750372d22c1e7acfff0d858f6d4eb3d1b7ead39053229e",
+    "browser_extension/unity_asset_store/library_adapters.js": "a007060f9ca772cccc0c5beea2ad187425f37102c78cf80552f46454b1985069",
+    "browser_extension/unity_asset_store/library_sync.js": "e41ae92967708490316bb06c14e867017252c28bbbd0dcdf9fa41638b33efa03",
+    "browser_extension/unity_asset_store/sync.html": "467ff17d66c214f2b369febe8de69a23b52831feaa33b2081b259a71327e41d5",
+    "browser_extension/unity_asset_store/sync.js": "ce85fde14f8e2cffe6f62f6f4e5d1051801043d0c93db258dfd4c6582eaf90f3",
+    "browser_extension/unity_asset_store/sync.css": "7b98d58dd5796818dbe2a37000b52b42491a4175a32a4a0c0ec6e78651184d49"
+  },
+  "owned_library_full_sync_validation": "docs/OWNED_LIBRARY_SYNC_VALIDATION.json",
+  "source_hash_basis": "git index file contents (LF-normalized by Git)"
+}

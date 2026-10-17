@@ -47,3 +47,4 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 #status[data-state="success"] { color: var(--green); border-color: var(--green); background: #def2e9; }
 #status[data-state="error"] { color: #a34734; border-color: #a34734; background: #fbe5df; }
 footer { padding: 11px 17px; color: var(--muted); border-top: 1px solid var(--line); background: var(--surface); font-size: 8px; line-height: 1.5; }
+.hub-preview{max-height:220px;overflow:auto;margin:12px 0}.hub-preview label{display:flex;gap:8px;padding:7px 0}.hub-preview input{width:auto}.owned-rag select{width:100%;padding:7px}.owned-rag button{margin-top:8px}

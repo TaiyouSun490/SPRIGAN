@@ -1,5 +1,7 @@
 "use strict";
 
+importScripts("library_adapters.js", "library_sync.js");
+
 const NATIVE_HOST = "jp.game_stack_planner";
 const SCHEMA_VERSION = 1;
 const GET_CONTEXT = "get_asset_store_context";
@@ -161,11 +163,36 @@ async function saveOwnedRag(message) {
   });
 }
 
+const ownedLibrarySync = new FafnirLibrarySync.LibrarySync(chrome, native);
+chrome.alarms.onAlarm.addListener(alarm => {
+  if ([FafnirLibrarySync.ALARM, FafnirLibrarySync.WATCH].includes(alarm.name)) ownedLibrarySync.tick().catch(() => {});
+});
+chrome.runtime.onStartup.addListener(() => ownedLibrarySync.boot().catch(() => {}));
+chrome.runtime.onInstalled.addListener(() => ownedLibrarySync.boot().catch(() => {}));
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (sender?.id !== chrome.runtime.id || message?.schema_version !== SCHEMA_VERSION) {
     return false;
   }
-  const action = message.action === GET_CONTEXT
+  // Full-sync controls are available only to extension pages, never website scripts.
+  const action = typeof message.action === "string" && message.action.startsWith("library_sync_") && sender.url?.startsWith(chrome.runtime.getURL(""))
+    ? () => ownedLibrarySync.handle(message).then(result => ({ok:true,schema_version:SCHEMA_VERSION,...result}))
+    : message.action === "hub_capture_context"
+    ? async () => {const [tab] = await chrome.tabs.query({active:true,currentWindow:true});return native({action:"get_asset_hub_capture_context",schema_version:SCHEMA_VERSION,url:tab?.url||"",title:tab?.title||""});}
+    : message.action === "hub_capture_library"
+    ? async () => {
+      const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
+      if(!tab?.id)throw Error("購入済みライブラリを開いてください。");
+      const u=new URL(tab.url);
+      const allowed=[[/^(?:[^.]+\.)?booth\.pm$/,/^\/(?:library|orders)(?:\/|$)/], [/^(?:www\.)?fab\.com$/,/^\/(?:[a-z]{2}\/)?library(?:\/|$)/], [/^(?:www\.)?humblebundle\.com$/,/^\/home\/(?:library|purchases)(?:\/|$)/], [/^(?:[^.]+\.)?itch\.io$/,/^\/(?:my-purchases|my-collections)(?:\/|$)/], [/^(?:[^.]+\.)?gumroad\.com$/,/^\/library(?:\/|$)/]];
+      if(u.protocol!=="https:"||!allowed.some(([host,path])=>host.test(u.hostname)&&path.test(u.pathname)))throw Error("対応する購入ライブラリ画面でのみ一括読込できます。その他は商品単位またはCSVを利用してください。");
+      const results=await chrome.scripting.executeScript({target:{tabId:tab.id},func:()=>[...document.querySelectorAll("a[href]")].filter(a=>a.getClientRects().length&&a.textContent.trim()).slice(0,3000).map(a=>({url:a.href,title:a.textContent.trim().slice(0,500)}))});
+      // Visible link metadata only. Never fetch private APIs, cookies, hidden fields or files.
+      return {ok:true,schema_version:SCHEMA_VERSION,url:u.origin+u.pathname,links:results[0]?.result||[]};
+    }
+    : message.action === "hub_save_owned"
+    ? () => native({action:"sync_asset_hub_owned",schema_version:SCHEMA_VERSION,source:message.source,items:message.items,owned_confirmation:message.owned_confirmation})
+    : message.action === GET_CONTEXT
     ? () => context(message)
     : message.action === SAVE_CANDIDATE
       ? () => save(message)

@@ -27,6 +27,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+decision-local = ["anyjev>=0.2,<0.3"]
 dev = [
     "pytest>=8.3,<10",
 ]

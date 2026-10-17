@@ -1,0 +1,80 @@
+{
+  "checked_at": "2026-10-17T09:15:57.645243+00:00",
+  "scope": "BOOTH/Fab/Humble owned-library full sync; local source implementation, not published",
+  "automated": {
+    "python_passed": 118,
+    "python_subtests_passed": 89,
+    "javascript_passed": 23,
+    "failed": 0,
+    "javascript_syntax": "passed",
+    "git_diff_check": "passed"
+  },
+  "gui_fixture": {
+    "verified": [
+      "three_source_connect_controls",
+      "batch_start",
+      "two_pages_per_source",
+      "three_unique_assets_per_source",
+      "pause_and_resume",
+      "disable_schedule",
+      "booth_dom_parser_8_of_8"
+    ],
+    "uses_real": [
+      "sync_ui",
+      "sync_coordinator",
+      "native_handler",
+      "temporary_sqlite_database"
+    ],
+    "stubbed": [
+      "chrome_extension_apis",
+      "store_responses",
+      "site_permissions"
+    ],
+    "screenshot": "docs/images/owned-library-sync-qa.png"
+  },
+  "regressions": [
+    "committed_terminal_page_lost_ack_resumes_via_replay_without_reopening_completed_run",
+    "pending_page_saved_before_native_send",
+    "pause_during_fetch_keeps_pending_page_without_import",
+    "duplicate_booth_gift_across_phase_is_valid",
+    "updated_visible_page_limit_applies_on_restart",
+    "humble_bundle_and_key_only_product_metadata_excludes_keys",
+    "source_failure_does_not_stop_other_sources",
+    "existing_rights_files_tags_and_curation_preserved",
+    "fab_language_specific_library_redirects_are_accepted"
+  ],
+  "not_verified": [
+    "live_authenticated_store_libraries",
+    "real_chrome_optional_permission_prompt",
+    "actual_browser_exit_and_relaunch"
+  ],
+  "assumptions": [
+    "metadata_ingestion_only_no_bulk_asset_file_downloads",
+    "browser_is_running_and_same_store_account_is_used_during_each_scan",
+    "site_internal_dom_and_json_contracts_can_change",
+    "owned_library_evidence_is_not_independent_purchase_or_licence_verification"
+  ],
+  "downloads": {
+    "asset_files": 0,
+    "paid_jobs": 0,
+    "installed_dependencies": false,
+    "unity_builds": false
+  },
+  "source_sha256": {
+    "game_stack_planner/asset_hub_sync.py": "e04dcc2c54e022b540a062024838e06f6d92223da12bd361cf2386cf057e2da8",
+    "game_stack_planner/asset_hub.py": "ac87ef80d24c900f574cc6c972aa5bb5aaf949dab899af8c963308d694e83f49",
+    "game_stack_planner/asset_hub_mcp.py": "229852781b1294305b974455e9dc0107303ec996b4c279fec32fd05120e3a34b",
+    "game_stack_planner/asset_hub_sources.py": "bf40e764ccb25cf1d296af0cc91a576eafb547f39662af8536de84cd29d34514",
+    "game_stack_planner/native_messaging.py": "ed15a1416ec25b99b240002ae93d48098b6a6e636c6e202fa1b3b0b21902f0bf",
+    "game_stack_planner/static/hub.html": "7f0b2fdea0f06a8b475c74a4d9addcee9b20b7dfa73378bdf2f0ec0d629c48ca",
+    "game_stack_planner/static/hub.js": "013c4eeef3d3920a4e77610d9372b419b6bfb21ff46811d0b97ca110d41fd26d",
+    "browser_extension/unity_asset_store/manifest.json": "ecc1bbce2786192d537deee2d238b9913a8957b6cf5de1d9287fc6b5e2019e70",
+    "browser_extension/unity_asset_store/service_worker.js": "5e403fe54ec9a3e030750372d22c1e7acfff0d858f6d4eb3d1b7ead39053229e",
+    "browser_extension/unity_asset_store/library_adapters.js": "a007060f9ca772cccc0c5beea2ad187425f37102c78cf80552f46454b1985069",
+    "browser_extension/unity_asset_store/library_sync.js": "e41ae92967708490316bb06c14e867017252c28bbbd0dcdf9fa41638b33efa03",
+    "browser_extension/unity_asset_store/sync.html": "467ff17d66c214f2b369febe8de69a23b52831feaa33b2081b259a71327e41d5",
+    "browser_extension/unity_asset_store/sync.js": "ce85fde14f8e2cffe6f62f6f4e5d1051801043d0c93db258dfd4c6582eaf90f3",
+    "browser_extension/unity_asset_store/sync.css": "7b98d58dd5796818dbe2a37000b52b42491a4175a32a4a0c0ec6e78651184d49"
+  },
+  "source_hash_basis": "git index file contents (LF-normalized by Git)"
+}
