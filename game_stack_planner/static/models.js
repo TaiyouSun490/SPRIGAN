@@ -20,18 +20,19 @@ for(const [axis,title] of Object.entries(referenceAxes)){
   const label=el("label",title+"の条件"),input=el("input");input.id="expected-"+axis;input.maxLength=2000;input.placeholder="指定する項目だけ入力";label.append(input);$m("#reference-expectations").append(label);
 }
 for(const input of document.querySelectorAll(".review-settings input, .review-settings textarea, .review-settings select"))input.addEventListener("input",()=>{settingsRevision++;modelViews.forEach(invalidate);});
-function showMetadata(v){v.meta.textContent=`${v.model.source} · ${v.model.author} · ${v.model.license}\n三角形 ${v.model.triangles??"未確認"} / 材質 ${v.model.materials??"未確認"}`;}
+function showMetadata(v){v.meta.textContent=`${v.model.source} · ${v.model.author} · ${v.model.license}\n三角形 ${v.model.triangles??"未確認"} / 材質 ${v.model.materials??"未確認"}${v.model.external_download?"\nOpenUSD・帰属表示と利用条件を確認。取得は配布元から。":""}`;if(v.model.license_url){v.meta.append(document.createTextNode(" "),link("ライセンス原文",v.model.license_url));}}
+function showPreview(v){v.preview.replaceChildren();if(!v.model.thumbnail)return;const image=el("img",undefined,"preview");image.src=v.model.thumbnail;image.alt=v.model.title;image.loading="lazy";image.addEventListener("error",()=>{image.replaceWith(el("p","プレビューを取得できません。配布元で確認してください。"));});v.preview.append(image);}
 function renderModel(model) {
   if(modelViews.has(model.id))return;
   const card=el("article",undefined,"model-card"), selected=el("input"); selected.type="checkbox"; selected.addEventListener("change",count);
   const pick=el("label",undefined,"select-model");pick.append(selected,el("span","比較に選択"));card.append(pick);
-  if(model.thumbnail){const image=el("img",undefined,"preview");image.src=model.thumbnail;image.alt=model.title;image.loading="lazy";image.addEventListener("error",()=>{image.replaceWith(el("p","プレビューを取得できません。配布元で確認してください。"));});card.append(image);}
+  const preview=el("div");card.append(preview);
   card.append(el("h2",model.title),link("配布元で3D・ライセンスを確認",model.url));
   const meta=el("p"), visual=el("select");
   for(const [value,title] of [["unknown","見た目：未確認"],["pass","見た目：用途に合う"],["fail","見た目：用途に合わない"]]){const o=el("option",title);o.value=value;visual.append(o);}
   visual.setAttribute("aria-label",`${model.title}の見た目の確認`);
   const evidence=el("textarea");evidence.placeholder="見た画像・3D表示と確認した点（例：配布元の回転表示、脚の接合部を確認）";evidence.maxLength=3000;evidence.setAttribute("aria-label",`${model.title}の確認根拠`);
-  const v={model,card,meta,selected,visual,evidence,result:el("div",undefined,"result"),evaluation:null,revision:0,reference:{}};modelViews.set(model.id,v);showMetadata(v);
+  const v={model,card,meta,preview,selected,visual,evidence,result:el("div",undefined,"result"),evaluation:null,revision:0,reference:{}};modelViews.set(model.id,v);showMetadata(v);showPreview(v);
   const reference=el("details");reference.append(el("summary","リファレンス比較の根拠"));
   for(const [axis,title] of Object.entries(referenceAxes)){
     const label=el("label",title),observed=el("textarea"),basis=el("select"),result=el("select");observed.maxLength=3000;observed.placeholder="このモデルを実際に見て確認した点・寸法（未確認なら空欄）";
@@ -45,7 +46,8 @@ function renderModel(model) {
   for(const f of (model.source==="sketchfab"?["gltf","glb","usdz"]:["gltf","fbx","blend","usd"])) {const o=el("option",f);o.value=f;format.append(o);}
   for(const f of ["1k","2k","4k","8k"]){const o=el("option",f);o.value=f;resolution.append(o);}resolution.value="2k";resolution.disabled=model.source==="sketchfab";
   const actions=el("div",undefined,"actions");
-  actions.append(button("詳細を更新",async()=>{v.model=await call("detail",{model_id:model.id});invalidate(v);showMetadata(v);$m("#message").textContent="詳細を更新しました。判断前に再評価してください。";}),button("取得内容を確認",async()=>{
+  actions.append(button("詳細を更新",async()=>{v.model=await call("detail",{model_id:model.id});invalidate(v);showMetadata(v);showPreview(v);$m("#message").textContent="詳細を更新しました。判断前に再評価してください。";}));
+  if(!model.external_download)actions.append(button("取得内容を確認",async()=>{
     downloadPlan=await call("prepare_download",{model_id:model.id,format:format.value,resolution:resolution.value,max_bytes:Number($m("#download-limit").value)*1048576});
     const summary=$m("#download-summary");summary.replaceChildren();
     for(const line of [downloadPlan.model.title,`作者：${downloadPlan.model.author}`,`ライセンス：${downloadPlan.model.license}`,`形式：${downloadPlan.format} / ${downloadPlan.resolution}`,`サイズ上限：${Math.round(downloadPlan.max_bytes/1048576)} MiB`,downloadPlan.destination])summary.append(el("p",line));
@@ -54,7 +56,8 @@ function renderModel(model) {
   }));
   const graph=el("details"),summary=el("summary","関係・判断履歴"), graphContent=el("div");graph.append(summary,graphContent);
   graph.addEventListener("toggle",async()=>{if(!graph.open)return;graphContent.textContent="読み込み中…";try{const data=await call("graph",{model_id:model.id,depth:1});const list=el("ul");for(const node of data.nodes){if(node.id===model.id)continue;const p=node.properties;list.append(el("li",`${node.kind}: ${p.label||p.reason||p.proposed_decision||p.state||node.id}${p.created_at?" · "+p.created_at:""}`));}graphContent.replaceChildren(list);}catch(e){graphContent.textContent=e.message;}});
-  card.append(meta,visual,evidence,reference,format,resolution,actions,v.result,graph);$m("#results").append(card);
+  card.append(meta,visual,evidence,reference);if(!model.external_download)card.append(format,resolution);card.append(actions,v.result,graph);$m("#results").append(card);
+  if(model.source==="nvidia_simready"&&!model.detail_fetched){preview.textContent="プレビューと利用条件を確認中…";call("detail",{model_id:model.id}).then(data=>{if(modelViews.get(model.id)!==v)return;v.model=data;showMetadata(v);preview.textContent="";if(data.thumbnail)showPreview(v);else preview.textContent="プレビューなし。配布元で確認してください。";}).catch(()=>{preview.textContent="プレビューを取得できません。詳細を更新するか配布元をご確認ください。";});}
 }
 async function search(source,cursor="",append=false){
   const query=append?lastSearch.query:$m("#query").value;
@@ -67,6 +70,7 @@ async function search(source,cursor="",append=false){
   for(const [s,c] of Object.entries(nextPages)){if(c)$m("#pagination").append(button(`${s}の次の候補`,()=>search(s,c,true)));}
 }
 $m("#search-form").addEventListener("submit",e=>{e.preventDefault();run(e.submitter,()=>search($m("#source").value));});
+$m("#nvidia-refresh").addEventListener("click",()=>run($m("#nvidia-refresh"),async()=>{const r=await call("refresh_nvidia_index");$m("#message").textContent=`NVIDIA索引を更新しました：${r.count}件。検索して確認できます。`;}));
 $m("#evaluate").addEventListener("click",()=>run($m("#evaluate"),async()=>{
   const chosen=[...modelViews.values()].filter(v=>v.selected.checked);
   if(!chosen.length)throw new Error("比較する候補を選択してください。");

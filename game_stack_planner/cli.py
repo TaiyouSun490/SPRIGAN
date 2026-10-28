@@ -42,7 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
 
     model = subparsers.add_parser("models", help="Search, review, graph and download 3D models; see docs/MODEL_DISCOVERY.md.")
-    model.add_argument("action", choices=["status", "search", "detail", "graph", "evaluate", "decide", "prepare_download", "download", "download_status"])
+    model.add_argument("action", choices=["status", "search", "refresh_nvidia_index", "detail", "graph", "evaluate", "decide", "prepare_download", "download", "download_status"])
     model.add_argument("--request", help="UTF-8 JSON payload file; omitted means an empty object.")
 
     hub = subparsers.add_parser("assets", help="Owned/CC0 models, materials, HDRIs, audio and generation jobs.")

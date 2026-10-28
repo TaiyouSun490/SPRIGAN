@@ -58,7 +58,7 @@ class ModelGraph:
         with self.lock, self.connection:
             previous = self.get(value["id"], required=False)
             # Search snippets must not erase the richer detail used by an active review.
-            if previous and previous.get("detail_fetched") and not detail:
+            if previous and previous.get("detail_fetched") and not detail and previous.get("dataset_revision") == value.get("dataset_revision"):
                 return previous
             value = {**value, "detail_fetched": detail, "revision": fingerprint(value)}
             self.node(value["id"], "model", value)

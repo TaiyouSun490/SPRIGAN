@@ -50,7 +50,7 @@ class PlannerHandler(BaseHTTPRequestHandler):
         self.send_header(
             "Content-Security-Policy",
             "default-src 'self'; script-src 'self'; style-src 'self'; "
-            "img-src 'self' data: https://assetstorev1-prd-cdn.unity3d.com https://media.sketchfab.com https://cdn.polyhaven.com https://3d.shep.bot; connect-src 'self'; media-src 'self'; object-src 'none'; "
+            "img-src 'self' data: https://assetstorev1-prd-cdn.unity3d.com https://media.sketchfab.com https://cdn.polyhaven.com https://3d.shep.bot https://huggingface.co https://us.aws.cdn.hf.co; connect-src 'self'; media-src 'self'; object-src 'none'; "
             "base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
         )
 

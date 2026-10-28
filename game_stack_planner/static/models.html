@@ -29,8 +29,10 @@
     </details>
     <form id="search-form" class="panel search-models">
       <label>探すモデル<input id="query" placeholder="例：rusty pipe / prison bed" maxlength="300"></label>
-      <label>検索元<select id="source"><option value="all">すべての検索元</option><option value="sketchfab">Sketchfab</option><option value="polyhaven">Poly Haven</option><option value="local">保存済み</option></select></label>
+      <label>検索元<select id="source"><option value="all">すべての検索元</option><option value="sketchfab">Sketchfab</option><option value="polyhaven">Poly Haven</option><option value="nvidia_simready">NVIDIA SimReady</option><option value="local">保存済み</option></select></label>
       <button type="submit">検索</button>
+      <button type="button" id="nvidia-refresh">NVIDIA索引を更新</button>
+      <p>NVIDIAは公開OpenUSDの一覧です。個別ライセンス・帰属表示・Unity互換性をご確認ください。素材本体は配布元から取得します。</p>
     </form>
     <section class="panel review-settings" aria-labelledby="review-title"><h2 id="review-title">今回の採用条件</h2>
       <div class="model-fields"><label>プロジェクト<input id="project" placeholder="例：ショーシャンク脱獄シーン" maxlength="500" required></label><label>評価方法<select id="evaluator"><option value="local">条件確認＋手動判断</option><option value="jev">TypeSafe Jev</option><option value="anyjev">ローカル AnyJev</option></select></label></div>

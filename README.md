@@ -235,3 +235,7 @@ python -m pytest -q
 
 [MIT](LICENSE)。Unity、Unity Asset Store、GitHub、OpenUPM、Chromeは各社の製品または商標です。
 Fafnirは各社の公式製品ではなく、提携・承認を受けたものでもありません。
+
+## NVIDIA SimReady素材
+
+「3D MODELS」からNVIDIAの公開OpenUSD素材を名前で検索・プレビューできます。CC0として扱わず、個別のライセンスと帰属表示を確認してください。[使い方と制限](docs/NVIDIA_SIMREADY.md)

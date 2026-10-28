@@ -35,7 +35,10 @@ def integer(value, name, low, high):
 class ModelCatalog:
     def __init__(self, database_path, *, providers=None, evaluators=None, cache_root=None):
         self.graph = ModelGraph(database_path)
-        self.providers = providers or {"sketchfab": Sketchfab(), "polyhaven": PolyHaven()}
+        if providers is None:
+            from .nvidia_simready import NvidiaSimReady
+            providers = {"sketchfab": Sketchfab(), "polyhaven": PolyHaven(), "nvidia_simready": NvidiaSimReady(self.graph)}
+        self.providers = providers
         from .model_oauth import SketchfabOAuth
         from .model_credentials import ProtectedOAuthStore
         self.oauth = SketchfabOAuth(store=ProtectedOAuthStore.for_catalog(database_path))
@@ -54,7 +57,8 @@ class ModelCatalog:
                 "default_policy": DEFAULT_POLICY, "cache_root": str(self.cache_root),
                 "graph": "SQLite property graph (nodes, indexed edges, bounded traversal)",
                 "workflow": ["search", "detail", "evaluate", "decide", "prepare_download", "download"],
-                "attribution": "Models provided by Sketchfab · Powered by Poly Haven",
+                "attribution": "Models provided by Sketchfab · Powered by Poly Haven · NVIDIA SimReady assets (review individual license)",
+                "nvidia_index": self.providers["nvidia_simready"].state() if "nvidia_simready" in self.providers else None,
                 "dots": "Use FAFNIR's MCP tools through an authorized local connection/plugin. No separate Dots API is required."}
 
     def provider(self, model_id):
@@ -66,6 +70,12 @@ class ModelCatalog:
     def detail(self, model_id):
         provider, uid = self.provider(model_id)
         return self.graph.save_model(provider.detail(uid), detail=True)
+
+    def refresh_nvidia_index(self, p):
+        provider = self.providers.get("nvidia_simready")
+        if provider is None:
+            raise ModelError("NVIDIA SimReady source is unavailable.")
+        return provider.refresh()
 
     def search(self, p):
         query = text(p.get("query", ""), "query", 300)
@@ -131,7 +141,8 @@ class ModelCatalog:
         def check(name, state, evidence):
             checks.append({"name": name, "result": state, "evidence": evidence})
         check("license", "unknown" if model["license"] == "unknown" else "pass" if model["license"] in licenses else "fail", model["license"])
-        check("downloadable", "pass" if model["downloadable"] else "fail", str(model["downloadable"]))
+        check("downloadable", "unknown" if model.get("external_download") else "pass" if model["downloadable"] else "fail",
+              "Official source only; FAFNIR package download is not implemented" if model.get("external_download") else str(model["downloadable"]))
         for key, maximum in (("triangles", "max_triangles"), ("materials", "max_materials")):
             value = model.get(key)
             state = "unknown" if not isinstance(value, int) else "pass" if value <= policy[maximum] else "fail"
@@ -296,7 +307,7 @@ class ModelCatalog:
     def dispatch(self, action, p):
         fields = {
             "oauth_start": {"return_to"}, "oauth_callback": {"code", "state"},
-            "status": set(), "search": {"query", "source", "limit", "cursor"},
+            "status": set(), "search": {"query", "source", "limit", "cursor"}, "refresh_nvidia_index": set(),
             "detail": {"model_id"}, "graph": {"model_id", "depth"},
             "evaluate": {"model_id", "project", "brief", "policy", "observations", "evaluator", "reference_profile"},
             "decide": {"evaluation_id", "decision", "reason"},
