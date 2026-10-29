@@ -10,7 +10,7 @@ Unity Asset Storeのセールで買ったものの、存在を忘れているア
 
 そこで、所有アセットをローカルへ同期し、作りたいゲームを文章で伝えるとCodexやClaude Codeが実装候補を組み立てられるツール **Fafnir Asset Stack Manager** を作りました。
 
-- GitHub: [TaiyouSun490/FAFNIR-Asset-Stack-Manager](https://github.com/TaiyouSun490/FAFNIR-Asset-Stack-Manager)
+- GitHub: [TaiyouSun490/SPRIGAN](https://github.com/TaiyouSun490/SPRIGAN)
 - ライセンス: MIT
 - Python: 3.12以上
 - 現在はAlpha版
@@ -167,8 +167,8 @@ claude mcp get fafnir
 ## インストールと起動
 
 ```powershell
-git clone https://github.com/TaiyouSun490/FAFNIR-Asset-Stack-Manager.git
-cd FAFNIR-Asset-Stack-Manager
+git clone https://github.com/TaiyouSun490/SPRIGAN.git
+cd SPRIGAN
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev]"
@@ -210,4 +210,4 @@ Fafnirでは、所有アセットと索引をローカルに置き、関連す�
 
 積んだアセットをもう一度使える候補へ戻したい方は、試してもらえると嬉しいです。Issueや改善案も歓迎します。
 
-- [FAFNIR Asset Stack Manager](https://github.com/TaiyouSun490/FAFNIR-Asset-Stack-Manager)
+- [FAFNIR Asset Stack Manager](https://github.com/TaiyouSun490/SPRIGAN)

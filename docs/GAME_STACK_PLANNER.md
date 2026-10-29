@@ -8,7 +8,7 @@ Fafnir Asset Stack Managerは、作りたいゲームの説明とローカルの
 ## 起動
 
 ```powershell
-cd C:\path\to\FAFNIR-Asset-Stack-Manager
+cd C:\path\to\SPRIGAN
 .\.venv\Scripts\Activate.ps1
 fafnir ui
 ```

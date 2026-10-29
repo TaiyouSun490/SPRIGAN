@@ -63,8 +63,8 @@ MCP応答へ含めません。ただし、AIへ質問したときは、MCPツー
 Python 3.12以上を使用します。
 
 ```powershell
-git clone https://github.com/TaiyouSun490/FAFNIR-Asset-Stack-Manager.git
-cd FAFNIR-Asset-Stack-Manager
+git clone https://github.com/TaiyouSun490/SPRIGAN.git
+cd SPRIGAN
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev]"

@@ -57,8 +57,8 @@ Fafnirは検索と根拠整理を担当します。最終的な設計判断はMC
 Python 3.12以上を使用します。
 
 ```powershell
-git clone https://github.com/TaiyouSun490/FAFNIR-Asset-Stack-Manager.git
-cd FAFNIR-Asset-Stack-Manager
+git clone https://github.com/TaiyouSun490/SPRIGAN.git
+cd SPRIGAN
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev]"
@@ -91,7 +91,7 @@ source checkoutを直接使う場合は、仮想環境のPythonを絶対pathで�
 
 ```powershell
 codex mcp add fafnir -- `
-  C:\path\to\FAFNIR-Asset-Stack-Manager\.venv\Scripts\python.exe `
+  C:\path\to\SPRIGAN\.venv\Scripts\python.exe `
   -m game_stack_planner mcp
 ```
 

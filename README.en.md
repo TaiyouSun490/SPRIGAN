@@ -55,8 +55,8 @@ local Web UI is optional when you use MCP.
 Python 3.12 or newer is required.
 
 ```powershell
-git clone https://github.com/TaiyouSun490/FAFNIR-Asset-Stack-Manager.git
-cd FAFNIR-Asset-Stack-Manager
+git clone https://github.com/TaiyouSun490/SPRIGAN.git
+cd SPRIGAN
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev]"
@@ -94,7 +94,7 @@ For a source checkout, register the environment's Python executable directly:
 
 ```powershell
 codex mcp add fafnir -- `
-  C:\path\to\FAFNIR-Asset-Stack-Manager\.venv\Scripts\python.exe `
+  C:\path\to\SPRIGAN\.venv\Scripts\python.exe `
   -m game_stack_planner mcp
 ```
 
