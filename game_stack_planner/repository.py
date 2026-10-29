@@ -548,6 +548,19 @@ class StackRepository:
             ).fetchone()
         return self._candidate(row) if row is not None else None
 
+    def set_art_styles(self, candidate_id: str, styles: list[str]) -> Candidate | None:
+        with self._lock:
+            row = self._connection.execute("SELECT metadata_json FROM candidates WHERE id = ?", (candidate_id,)).fetchone()
+            if row is None:
+                return None
+            metadata = json.loads(str(row["metadata_json"]))
+            metadata = metadata if isinstance(metadata, dict) else {}
+            metadata["user_art_styles"] = styles
+            self._connection.execute("UPDATE candidates SET metadata_json = ?, last_seen_at = ? WHERE id = ?",
+                                     (_json(metadata), _now(), candidate_id))
+            self._connection.commit()
+        return self.get_candidate(candidate_id)
+
     def list_candidates(
         self,
         *,
@@ -599,6 +612,18 @@ class StackRepository:
                 (*parameters, bounded_limit),
             ).fetchall()
         return [self._candidate(row) for row in rows]
+
+    def planning_candidates(self) -> list[Candidate]:
+        """Read the planning catalog once, without the public list's 5,000-item cap."""
+        result: list[Candidate] = []
+        with self._lock:
+            cursor = self._connection.execute("SELECT * FROM candidates ORDER BY id")
+            while True:
+                rows = cursor.fetchmany(500)
+                if not rows:
+                    break
+                result.extend(self._candidate(row) for row in rows)
+        return result
 
     def save_project(self, snapshot: ProjectSnapshot) -> int:
         with self._lock:

@@ -15,7 +15,7 @@ import tempfile
 from typing import Any
 
 from .asset_store_cache import discover_cache_roots
-from .compatibility import assess_candidate_compatibility
+from .compatibility import assess_candidate_compatibility, project_state_fingerprint
 from .models import Candidate, ProjectSnapshot
 from .unitypackage_inspection import (
     UnityPackageInspection,
@@ -145,10 +145,11 @@ def _static_checks(
         warnings.extend(str(value) for value in structured["reasons"])
 
     pipeline = project.render_pipeline.casefold()
+    pipeline_failures = failures if project.render_pipeline_evidence != "package_presence_only" else warnings
     if markers.get("urp") and not markers.get("hdrp") and pipeline == "hdrp":
-        failures.append("ローカルコードはURP参照のみですが、プロジェクトはHDRPです")
+        pipeline_failures.append("ローカルコードはURP参照のみですが、プロジェクトはHDRPの可能性があります")
     if markers.get("hdrp") and not markers.get("urp") and pipeline == "urp":
-        failures.append("ローカルコードはHDRP参照のみですが、プロジェクトはURPです")
+        pipeline_failures.append("ローカルコードはHDRP参照のみですが、プロジェクトはURPの可能性があります")
     if markers.get("input_system") and project.input_backend == "legacy":
         failures.append("Input System参照がありますが、プロジェクトはLegacy Inputのみです")
     if markers.get("legacy_input") and project.input_backend == "input-system":
@@ -418,6 +419,7 @@ def validate_cached_asset(
         "validated_at": datetime.now(timezone.utc).isoformat(),
         "project": {
             "fingerprint": sha256(str(project_root).encode("utf-8")).hexdigest()[:24],
+            "state_fingerprint": project_state_fingerprint(project),
             "name": project.name,
             "unity_version": project.unity_version,
             "render_pipeline": project.render_pipeline,

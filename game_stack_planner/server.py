@@ -348,6 +348,8 @@ class PlannerHandler(BaseHTTPRequestHandler):
                 result = self.app.recommend(payload)
             elif route == "/api/catalog/manual":
                 result = self.app.save_manual(payload)
+            elif route == "/api/catalog/art-styles":
+                result = self.app.set_art_styles(payload)
             elif route == "/api/asset-store/rag":
                 result = self.app.save_owned_rag(payload)
             elif route == "/api/install/asset-store/download/prepare":

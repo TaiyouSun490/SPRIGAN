@@ -7,6 +7,7 @@ import re
 import time
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlencode
@@ -14,8 +15,13 @@ from urllib.parse import urlencode
 from .asset_store_cache import CacheScanResult, scan_asset_store_cache
 from .compatibility import assess_candidate_compatibility
 from .models import Candidate, GameRequirement, ProjectSnapshot
+from .planning_graph import CandidateFeatures, CandidateIndex, build_graph
+from .planning_context import SCENES, compare_scene, retrieval_terms, scene_context
+from .art_styles import LABELS as STYLE_LABELS, candidate_styles, query_terms as style_query_terms, style_hints
+from .dependency_graph import plan_dependency_review
+from .graph_reasoning import dependency_issues, diversify_candidates
 from .repository import StackRepository
-from .requirements import derive_requirements
+from .requirements import derive_requirements, excluded_requirements
 from .scopes import SEARCH_SCOPES, candidate_view
 from .sources import GitHubSource, OpenUpmSource, SourceError, SourceResult
 from .unity_project import scan_unity_project
@@ -34,6 +40,33 @@ _RECOMMENDATION_SCOPE_LIMITS = {
     "asset_store_market": 5,
     "community": 8,
 }
+
+
+@dataclass(frozen=True)
+class PlanningPolicy:
+    """Bounded search and integration costs; callers can override defaults."""
+    beam_width: int = 32
+    options_per_requirement: int = 8
+    minimum_relevance: float = 20.0
+    new_asset_cost: float = 22.0
+    owned_asset_cost: float = 12.0
+    installed_asset_cost: float = 4.0
+    scene_match_bonus: float = 45.0
+    scene_contrast_penalty: float = 60.0
+    style_match_bonus: float = 18.0
+    dependency_version_cost: float = 20.0
+    dependency_incompatible_cost: float = 45.0
+    alternative_diversity_penalty: float = 8.0
+
+    def __post_init__(self):
+        if any(not isinstance(value, int) or isinstance(value, bool)
+               for value in (self.beam_width, self.options_per_requirement)) or not 1 <= self.beam_width <= 128 or not 1 <= self.options_per_requirement <= 20:
+            raise ValueError("Planning search limits are out of range.")
+        for value in (self.minimum_relevance, self.new_asset_cost, self.owned_asset_cost, self.installed_asset_cost,
+                      self.scene_match_bonus, self.scene_contrast_penalty, self.style_match_bonus,
+                      self.dependency_version_cost, self.dependency_incompatible_cost, self.alternative_diversity_penalty):
+            if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value) or not 0 <= value <= 100:
+                raise ValueError("Planning costs and relevance must be finite and between 0 and 100.")
 
 _GENERIC_MATCH_TOKENS = {
     "adaptive", "asset", "assets", "audio", "code", "controller", "environment",
@@ -118,17 +151,27 @@ def _candidate_score(
     project: ProjectSnapshot | None,
     platform: str,
     rag_match: dict[str, Any] | None = None,
+    installed_ids: set[str] | None = None,
+    compatibility_cache: dict[str, dict[str, Any]] | None = None,
+    intent_context: tuple[str, ...] = (),
+    scene_match_bonus: float = 45.0,
+    scene_contrast_penalty: float = 60.0,
+    intent_styles: tuple[str, ...] = (),
+    style_match_bonus: float = 18.0,
+    features: CandidateFeatures | None = None,
+    query_tokens: set[str] | None = None,
+    payload_cache: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     reasons: list[str] = []
     risks: list[str] = []
     score = 0.0
 
-    query_tokens = _tokens(requirement.query)
-    identity_overlap = query_tokens & _tokens(" ".join((
-        candidate.title,
-        *candidate.tags,
-    )))
-    description_overlap = query_tokens & _tokens(candidate.description)
+    if query_tokens is None:
+        query_tokens = _tokens(requirement.query)
+    identity_tokens = features.identity_tokens if features is not None else _tokens(" ".join((candidate.title, *candidate.tags)))
+    description_tokens = features.description_tokens if features is not None else _tokens(candidate.description)
+    identity_overlap = query_tokens & identity_tokens
+    description_overlap = query_tokens & description_tokens
     overlap = identity_overlap | description_overlap
     remote_candidate = candidate.source in {"github", "openupm"}
     category_match = (
@@ -150,15 +193,35 @@ def _candidate_score(
             len(identity_overlap) * 22.0 + len(description_overlap) * 4.0,
         )
         reasons.append("検索語一致: " + ", ".join(sorted(overlap)[:4]))
+    scene = compare_scene(intent_context, requirement.key, candidate)
+    styles = features.styles if features is not None else candidate_styles(candidate)
+    style_matches = set(intent_styles) & (set(styles["user"]) | set(style_hints(" ".join(styles["user"]))) | set(styles["text_hints"])) if requirement.key == "visual_assets" else set()
+    if style_matches:
+        score += style_match_bonus
+        reasons.append("画風の手がかり: " + ", ".join(STYLE_LABELS.get(key, key) for key in sorted(style_matches)))
+    if scene["matches"]:
+        score += scene_match_bonus
+        reasons.append("舞台の文脈一致: " + ", ".join(SCENES[key]["label"] for key in scene["matches"]))
+    elif scene["contrasts"]:
+        score -= scene_contrast_penalty
+        risks.append("舞台との差を要確認: " + ", ".join(SCENES[key]["label"] for key in scene["contrasts"]))
 
     # Ownership is useful only after relevance is established. Without this
     # gate, any installed package could be selected for an unrelated slot.
     installed_in_project = (
         candidate.installed
         if project is None
+        else candidate.id in installed_ids if installed_ids is not None
         else any(item.id == candidate.id for item in project.packages)
     )
-    candidate_payload = candidate_view(candidate)
+    base_payload = payload_cache.get(candidate.id) if payload_cache is not None else None
+    if base_payload is None:
+        base_payload = candidate_view(candidate, art_styles=styles)
+        if payload_cache is not None:
+            payload_cache[candidate.id] = base_payload
+    # Retrieval rank and project state belong to this scored edge, not to the
+    # reusable candidate view (or a later requirement in the same request).
+    candidate_payload = dict(base_payload)
     if (
         project is not None
         and candidate.source == "local"
@@ -168,11 +231,9 @@ def _candidate_score(
         if candidate_payload["ownership"] == "installed":
             candidate_payload["ownership"] = "unknown"
 
-    compatibility = assess_candidate_compatibility(
-        candidate,
-        project=project,
-        platform=platform,
-    )
+    compatibility = (compatibility_cache or {}).get(candidate.id)
+    if compatibility is None:
+        compatibility = assess_candidate_compatibility(candidate, project=project, platform=platform)
     candidate_payload["compatibility"] = compatibility
     if compatibility["status"] == "incompatible":
         return {
@@ -210,11 +271,12 @@ def _candidate_score(
     if (
         not category_match
         and not overlap
+        and not scene["matches"]
         and (
             rag_match is None
             or fallback_rag
         )
-    ) or (fallback_rag and not fallback_relevant):
+    ) or (fallback_rag and not fallback_relevant and not scene["matches"]):
         return {
             "candidate": candidate_payload,
             "score": 0.0,
@@ -273,13 +335,13 @@ def _candidate_score(
     if compatibility["status"] == "compatible":
         score += 8
         reasons.extend(list(compatibility["reasons"])[:1])
-        risks.extend(list(compatibility.get("local_warnings") or [])[:2])
     elif (
         project is not None
         and candidate.source == "asset_store"
         and compatibility["status"] == "unknown"
     ):
         risks.extend(list(compatibility["reasons"])[:1])
+    risks.extend(list(compatibility.get("local_warnings") or [])[:2])
 
     if (
         candidate.source != "asset_store"
@@ -340,35 +402,75 @@ def _make_plan(
     variant: str,
     requirements: tuple[GameRequirement, ...],
     recommendations: dict[str, list[dict[str, Any]]],
+    policy: PlanningPolicy | None = None,
+    graph: dict[str, Any] | None = None,
+    graph_issues: dict[str, dict[tuple[str, str], dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
+    policy = policy or PlanningPolicy()
+    if graph_issues is None:
+        ids = {str(item["candidate"]["id"]) for values in recommendations.values() for item in values}
+        graph_issues = dependency_issues(graph or {}, ids, version_cost=policy.dependency_version_cost,
+                                         incompatible_cost=policy.dependency_incompatible_cost)
+    # Each state assigns one candidate or a gap to each visited requirement.
+    # A reused candidate pays integration cost once, but still needs independent
+    # evidence for every requirement it covers. Keep a bounded beam, not an
+    # exponential enumeration of every possible combination.
+    beam: list[tuple[float, frozenset[str], tuple[dict[str, Any] | None, ...]]] = [(0.0, frozenset(), ())]
+    support_edges = None if graph is None else {
+        (edge.get("from"), edge.get("to")) for edge in graph.get("edges", [])
+        if edge.get("relation") == "may_support"
+    }
+    issue_cache: dict[frozenset[str], set[tuple[str, str]]] = {frozenset(): set()}
+    def known_issues(selected: frozenset[str]) -> set[tuple[str, str]]:
+        if selected not in issue_cache:
+            issue_cache[selected] = {issue for candidate_id in selected for issue in graph_issues.get(candidate_id, {})}
+        return issue_cache[selected]
+    for requirement in requirements:
+        ranked = sorted((item for item in recommendations.get(requirement.key, [])
+                         if item["score"] > 0 and item["score"] >= policy.minimum_relevance and _variant_value(item, variant) >= policy.minimum_relevance
+                         and (item["candidate"].get("compatibility") or {}).get("status") != "incompatible"
+                         and (support_edges is None or (str(item["candidate"]["id"]), "requirement:" + requirement.key) in support_edges)),
+                        key=lambda item: (-(_variant_value(item, variant) - sum(float(issue["cost"]) for issue in graph_issues.get(str(item["candidate"]["id"]), {}).values())), str(item["candidate"]["id"])))
+        states: dict[frozenset[str], tuple[float, frozenset[str], tuple[dict[str, Any] | None, ...]]] = {}
+        for utility, selected, assignments in beam:
+            alternatives = ranked[:policy.options_per_requirement]
+            alternatives += [item for item in ranked[policy.options_per_requirement:] if item["candidate"]["id"] in selected]
+            for item in [None, *alternatives]:
+                if item is None:
+                    state = (utility, selected, (*assignments, None))
+                else:
+                    candidate = item["candidate"]
+                    key = str(candidate["id"])
+                    cost = 0.0 if key in selected else (
+                        policy.installed_asset_cost if item.get("installed_in_project") else
+                        policy.owned_asset_cost if candidate.get("ownership") == "owned" else policy.new_asset_cost)
+                    weight = 1.15 if requirement.priority == "high" else 1.0
+                    new_issues = graph_issues.get(key, {}) if key not in selected else {}
+                    dependency_cost = sum(float(issue["cost"]) for issue_id, issue in new_issues.items() if issue_id not in known_issues(selected))
+                    value = weight * (_variant_value(item, variant) - policy.minimum_relevance) - cost - dependency_cost
+                    state = (utility + value, selected | {key}, (*assignments, item))
+                old = states.get(state[1])
+                if old is None or state[0] > old[0]:
+                    states[state[1]] = state
+        beam = sorted(states.values(), key=lambda state: (-state[0], len(state[1]), tuple(sorted(state[1]))))[:policy.beam_width]
+
     selected_by_id: dict[str, dict[str, Any]] = {}
     missing: list[str] = []
-    for requirement in requirements:
-        ranked = sorted(
-            recommendations.get(requirement.key, []),
-            key=lambda item: (
-                -_variant_value(item, variant),
-                str(item["candidate"]["title"]).casefold(),
-            ),
-        )
-        choice = next(
-            (item for item in ranked if _variant_value(item, variant) >= 20),
-            None,
-        )
+    for requirement, choice in zip(requirements, beam[0][2]):
         if choice is None:
             missing.append(requirement.key)
             continue
         candidate_id = str(choice["candidate"]["id"])
         current = selected_by_id.get(candidate_id)
+        evidence = {"score": choice["score"], "reasons": list(choice.get("reasons") or []),
+                    "risks": list(choice.get("risks") or [])}
         if current is None:
-            selected_by_id[candidate_id] = {
-                **choice,
-                "covers": [requirement.key],
-                "requirement_titles": [requirement.title],
-            }
+            selected_by_id[candidate_id] = {**choice, "covers": [requirement.key], "requirement_titles": [requirement.title],
+                                            "coverage_evidence": {requirement.key: evidence}}
         else:
             current["covers"].append(requirement.key)
             current["requirement_titles"].append(requirement.title)
+            current["coverage_evidence"][requirement.key] = evidence
             current["score"] = max(current["score"], choice["score"])
 
     copy = {
@@ -387,6 +489,15 @@ def _make_plan(
     }[variant]
     total = len(requirements)
     coverage = 0 if total == 0 else round((total - len(missing)) / total * 100)
+    dependency_review = plan_dependency_review(graph or {}, set(selected_by_id))
+    dependencies = [edge for edge in dependency_review["dependencies"]
+                    if edge.get("availability") != "installed_in_project" or edge.get("version_status") == "below_minimum"
+                    or (edge.get("required_version") and edge.get("version_status") == "unknown")
+                    or (edge.get("dependency_compatibility") or {}).get("status") == "incompatible"]
+    selected_issues: dict[tuple[str, str], dict[str, Any]] = {}
+    for candidate_id in sorted(selected_by_id):
+        for key, issue in graph_issues.get(candidate_id, {}).items():
+            selected_issues.setdefault(key, {**issue, "candidate_ids": []})["candidate_ids"].append(candidate_id)
     return {
         "id": variant,
         "title": copy[0],
@@ -394,6 +505,11 @@ def _make_plan(
         "coverage": coverage,
         "selected": list(selected_by_id.values()),
         "missing": missing,
+        "unresolved_dependencies": dependencies,
+        "dependency_review": dependency_review,
+        "planning_dependency_issues": list(selected_issues.values()),
+        "selection_method": "bounded_graph_beam",
+        "selection_note": "要件をまとめて比較し、明示された依存の問題を考慮。未確認の依存・連携は別途確認。",
     }
 
 
@@ -404,10 +520,12 @@ class GameStackPlanner:
         *,
         github: GitHubSource | None = None,
         openupm: OpenUpmSource | None = None,
+        planning_policy: PlanningPolicy | None = None,
     ) -> None:
         self.repository = repository
         self.github = github or GitHubSource()
         self.openupm = openupm or OpenUpmSource()
+        self.planning_policy = planning_policy or PlanningPolicy()
 
     def scan_project(self, path: str) -> ProjectSnapshot:
         snapshot = scan_unity_project(path)
@@ -511,6 +629,8 @@ class GameStackPlanner:
             else None
         )
         requirements = derive_requirements(normalized_prompt, platform=platform)
+        context = scene_context(normalized_prompt)
+        intent_styles = style_hints(normalized_prompt)
         if remote:
             remote_candidates, source_status = self._remote_candidates(requirements)
             self.repository.upsert_candidates(remote_candidates)
@@ -520,14 +640,24 @@ class GameStackPlanner:
                 "openupm": {"status": "offline", "count": 0},
             }
 
-        # Planning must consider the whole personal library. The public catalog
-        # endpoint remains paginated, but silently searching only its first page
-        # makes large My Assets libraries effectively random.
-        catalog = self.repository.list_candidates(limit=5000)
+        # Build the retrieval index in one pass; the public list API remains bounded.
+        # A hard first-page cutoff would silently lose assets in larger libraries.
+        catalog = self.repository.planning_candidates()
         if project is not None:
             by_id = {item.id: item for item in catalog}
             by_id.update({item.id: item for item in project.packages})
             catalog = list(by_id.values())
+        evidence_catalog = catalog
+        catalog = [candidate for candidate in catalog if not candidate.archived and (
+            budget != "free" or candidate.source != "asset_store" or candidate.ownership in {"owned", "installed"}
+        )]
+        index = CandidateIndex(catalog, _tokens, context=context)
+        payload_cache: dict[str, dict[str, Any]] = {}
+        installed_ids = {candidate.id for candidate in project.packages} if project else None
+        compatibility_cache = {
+            candidate.id: assess_candidate_compatibility(candidate, project=project, platform=platform)
+            for candidate in catalog
+        }
 
         recommendations: dict[str, list[dict[str, Any]]] = {}
         recommendation_groups: dict[
@@ -543,11 +673,7 @@ class GameStackPlanner:
             if not candidate.archived
             and candidate.source == "asset_store"
             and candidate.ownership in {"owned", "installed"}
-            and assess_candidate_compatibility(
-                candidate,
-                project=project,
-                platform=platform,
-            )["status"] != "incompatible"
+            and compatibility_cache[candidate.id]["status"] != "incompatible"
         }
         rag_matches: dict[str, dict[str, dict[str, Any]]] = {}
         rag_modes: set[str] = set()
@@ -555,7 +681,7 @@ class GameStackPlanner:
         for requirement in requirements:
             try:
                 retrieval = self.repository.search_asset_rag(
-                    query=_rag_query_for_requirement(requirement, normalized_prompt),
+                    query=" ".join((_rag_query_for_requirement(requirement, normalized_prompt), *retrieval_terms(context, requirement.key))),
                     limit=40,
                     candidate_ids=eligible_owned_ids,
                     category_hints=(requirement.key,),
@@ -583,7 +709,12 @@ class GameStackPlanner:
         if rag_error:
             source_status["owned_asset_rag"]["error"] = rag_error
 
+        considered = 0
         for requirement in requirements:
+            pool = index.retrieve(requirement, set(rag_matches.get(requirement.key, {})),
+                                  _tokens(" ".join((*retrieval_terms(context, requirement.key), *(style_query_terms(normalized_prompt) if requirement.key == "visual_assets" else ())))))
+            considered += len(pool)
+            query_tokens = _tokens(requirement.query)
             scored = [
                 _candidate_score(
                     requirement,
@@ -591,17 +722,21 @@ class GameStackPlanner:
                     project=project,
                     platform=platform,
                     rag_match=rag_matches.get(requirement.key, {}).get(candidate.id),
+                    installed_ids=installed_ids,
+                    compatibility_cache=compatibility_cache,
+                    intent_context=context,
+                    scene_match_bonus=self.planning_policy.scene_match_bonus,
+                    scene_contrast_penalty=self.planning_policy.scene_contrast_penalty,
+                    intent_styles=intent_styles,
+                    style_match_bonus=self.planning_policy.style_match_bonus,
+                    features=index.features[candidate.id],
+                    query_tokens=query_tokens,
+                    payload_cache=payload_cache,
                 )
-                for candidate in catalog
-                if not candidate.archived
-                and (
-                    budget != "free"
-                    or candidate.source != "asset_store"
-                    or candidate.ownership in {"owned", "installed"}
-                )
+                for candidate in pool
             ]
             ranked = sorted(
-                (item for item in scored if item["score"] >= 8),
+                (item for item in scored if item["score"] > 0 and item["score"] >= self.planning_policy.minimum_relevance),
                 key=lambda item: (
                     -float(item["score"]),
                     str(item["candidate"]["title"]).casefold(),
@@ -611,11 +746,11 @@ class GameStackPlanner:
                 scope: [
                     item for item in ranked
                     if item["candidate"]["scope"] == scope
-                ][:_RECOMMENDATION_SCOPE_LIMITS[scope]]
+                ][:_RECOMMENDATION_SCOPE_LIMITS[scope] * 2]
                 for scope in SEARCH_SCOPES
             }
             recommendation_groups[requirement.key] = groups
-            recommendations[requirement.key] = sorted(
+            merged = sorted(
                 (
                     item
                     for scope in SEARCH_SCOPES
@@ -626,14 +761,32 @@ class GameStackPlanner:
                     str(item["candidate"]["title"]).casefold(),
                 ),
             )
+            recommendations[requirement.key] = merged
 
         plan_order = {
             "owned_first": ("installed_first", "low_risk", "open_source"),
             "free": ("open_source", "low_risk", "installed_first"),
             "mixed": ("low_risk", "installed_first", "open_source"),
         }[budget]
+        graph = build_graph(requirements, recommendations, evidence_catalog, project, platform, context,
+                            features=index.features, compatibility_cache=compatibility_cache)
+        graph_issues = dependency_issues(graph, {str(item["candidate"]["id"]) for items in recommendations.values() for item in items},
+                                         version_cost=self.planning_policy.dependency_version_cost,
+                                         incompatible_cost=self.planning_policy.dependency_incompatible_cost)
+        for items in recommendations.values():
+            for item in items:
+                item["planning_dependency_issues"] = list(graph_issues.get(str(item["candidate"]["id"]), {}).values())
+                item["planning_score"] = float(item["score"]) - sum(float(issue["cost"]) for issue in item["planning_dependency_issues"])
+        for requirement in requirements:
+            groups = recommendation_groups[requirement.key]
+            for scope in SEARCH_SCOPES:
+                groups[scope] = diversify_candidates(groups[scope], _RECOMMENDATION_SCOPE_LIMITS[scope], _tokens,
+                    penalty=self.planning_policy.alternative_diversity_penalty, score_field="planning_score")
+            merged = [item for scope in SEARCH_SCOPES for item in groups[scope]]
+            recommendations[requirement.key] = diversify_candidates(merged, len(merged), _tokens,
+                penalty=self.planning_policy.alternative_diversity_penalty, per_scope=True, score_field="planning_score")
         plans = [
-            _make_plan(variant, requirements, recommendations)
+            _make_plan(variant, requirements, recommendations, self.planning_policy, graph, graph_issues)
             for variant in plan_order
         ]
         result: dict[str, Any] = {
@@ -642,15 +795,26 @@ class GameStackPlanner:
             "budget": budget,
             "project": project.to_dict() if project is not None else None,
             "requirements": [item.to_dict() for item in requirements],
+            "excluded_requirements": excluded_requirements(normalized_prompt),
+            "inferred_context": [{"id": key, "label": SCENES[key]["label"], "basis": "prompt_keyword_hint"} for key in context],
+            "inferred_art_styles": [{"id": key, "label": STYLE_LABELS[key], "basis": "prompt_keyword_hint"} for key in intent_styles],
             "recommendations": recommendations,
             "recommendation_groups": recommendation_groups,
             "plans": plans,
+            "planning_graph": graph,
+            "planning_diagnostics": {"retrieval": "inverted_index_plus_rag", "catalog_size": len(catalog),
+                                     "candidate_requirement_pairs_considered": considered,
+                                     "full_scan_pairs": len(catalog) * len(requirements),
+                                     "search": "bounded_graph_beam", "beam_width": self.planning_policy.beam_width,
+                                     "options_per_requirement": self.planning_policy.options_per_requirement,
+                                     "policy": asdict(self.planning_policy)},
             "recommended_plan_id": plan_order[0],
             "asset_store_searches": [
                 self._asset_store_search(
                     requirement, project=project, platform=platform
                 )
                 for requirement in requirements
+                if requirement.key in plans[0]["missing"]
             ],
             "source_status": source_status,
             "policy": {
@@ -675,4 +839,4 @@ class GameStackPlanner:
         return result
 
 
-__all__ = ["GameStackPlanner"]
+__all__ = ["GameStackPlanner", "PlanningPolicy"]

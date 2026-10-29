@@ -9,6 +9,24 @@ let requirementCategories = [];
 let activeInstallPlan = null;
 let activeInstallNonce = "";
 let catalogRequestId = 0;
+let artStyleCandidate = null;
+const STYLE_LABELS = {realistic: "リアル", stylized: "スタイライズ", low_poly: "ローポリ", pixel_art: "ピクセルアート", anime: "アニメ調", hand_painted: "手描き風", cartoon: "カートゥーン"};
+
+function artStyleInfo(candidate) {
+  const user = candidate.art_styles?.user || [];
+  const hints = candidate.art_styles?.text_hints || [];
+  return [user.length ? `画風（自分のタグ）：${user.map(x => STYLE_LABELS[x] || x).join("、")}` : "", hints.length ? `画風の推定：${hints.map(x => STYLE_LABELS[x] || x).join("、")}` : ""].filter(Boolean).join(" / ");
+}
+
+function editArtStyle(candidate) {
+  artStyleCandidate = candidate;
+  $("#art-style-title").textContent = candidate.title;
+  $("#art-style-input").value = (candidate.art_styles?.user || []).join(", ");
+  $("#art-style-hints").textContent = artStyleInfo(candidate) || "名前などからの画風推定はありません。";
+  $("#art-style-message").textContent = "";
+  $("#art-style-dialog").showModal();
+  $("#art-style-input").focus();
+}
 const INSTALL_STATUS_LABELS = {
   ready: "導入準備完了",
   manual: "手動導入が必要",
@@ -456,11 +474,16 @@ function renderRequirements(result) {
     card.append(head, element("p", "", req.rationale));
     root.append(card);
   });
+  const exclusions = Object.entries(result.excluded_requirements || {});
+  if (exclusions.length) root.append(element("p", "muted", `明示的な除外：${exclusions.map(([key, reason]) => `${key}（${reason}）`).join(" / ")}`));
+  if (result.inferred_context?.length) root.append(element("p", "muted", `読み取った舞台の手がかり：${result.inferred_context.map(item => item.label).join(" / ")}（語句による推定）`));
+  if (result.inferred_art_styles?.length) root.append(element("p", "muted", `読み取った画風：${result.inferred_art_styles.map(item => item.label).join(" / ")}（語句による推定）`));
 }
 
 function renderPlans(result) {
   const root = $("#plans");
   root.replaceChildren();
+  const graphLabels = new Map((result.planning_graph?.nodes || []).map(node => [node.id, node.label]));
   result.plans.forEach((plan, index) => {
     const card = element("article", `plan ${index === 0 ? "recommended" : ""}`);
     card.append(element("div", "coverage", `${plan.coverage}%`));
@@ -478,6 +501,13 @@ function renderPlans(result) {
       ], meta);
       row.append(assetThumbnail(item.candidate), heading, meta);
       row.append(assetActionButtons(item.candidate));
+      if (item.coverage_evidence) {
+        (item.covers || []).forEach((key, index) => {
+          const evidence = item.coverage_evidence[key];
+          if (evidence?.reasons?.length) row.append(element("p", "muted", `${item.requirement_titles[index]}の根拠：${evidence.reasons.join(" / ")}`));
+        });
+      } else if (item.reasons?.length) row.append(element("p", "muted", `候補の根拠：${item.reasons.join(" / ")}`));
+      if (item.risks?.length) row.append(element("p", "risk", `要確認：${item.risks.join(" / ")}`));
       if (Array.isArray(item.usage)) {
         item.usage.forEach((usage) => {
           row.append(element("p", "stack-use", `${usage.role}：${usage.use_case}`));
@@ -490,6 +520,27 @@ function renderPlans(result) {
     });
     if (!plan.selected.length) list.append(element("p", "muted", "候補なし"));
     card.append(list);
+    if (plan.dependency_review) {
+      const details = element("details", "dependency-review");
+      details.append(element("summary", "", `依存の根拠（${plan.dependency_review.dependencies.length}件）`));
+      if (!plan.dependency_review.dependencies.length) details.append(element("p", "muted", "明示された依存情報はありません。依存がないことの証明ではありません。"));
+      plan.dependency_review.dependencies.forEach(edge => {
+        const path = (edge.path || [edge.from, edge.to]).map(id => graphLabels.get(id) || id).join(" → ");
+        const source = {asset_store_product_metadata: "商品情報", inspected_package_manifest: "検査済みpackage.json", unity_packages_lock: "Unityのpackages-lock.json"}[edge.basis] || edge.basis;
+        const version = edge.required_version ? ` / 要求 ${edge.required_version}${edge.resolved_version ? `・解決済み ${edge.resolved_version}` : ""}` : "";
+        const status = edge.version_status === "below_minimum" ? "要求版を下回る" : edge.version_status === "satisfied" ? "最低版を満たす" : edge.availability === "installed_in_project" ? "解決・導入情報あり、版は未判定" : "導入・解決未確認";
+        const compatibility = edge.dependency_compatibility ? ` / 対象環境：${{compatible: "商品表で対応", incompatible: "非対応", unknown: "未判定", not_evaluated: "未判定"}[edge.dependency_compatibility.status] || "未判定"}` : "";
+        details.append(element("p", edge.version_status === "below_minimum" || edge.dependency_compatibility?.status === "incompatible" ? "risk" : "muted", `${path}：${status}（${source}${version}${compatibility}）${edge.cycle ? " / 循環" : ""}`));
+      });
+      card.append(details);
+    }
+    if (plan.unresolved_dependencies?.length) {
+      const pending = plan.unresolved_dependencies.map(edge => `${(edge.path || [edge.from, edge.to]).map(id => graphLabels.get(id) || id).join(" → ")}（${edge.dependency_compatibility?.status === "incompatible" ? `対象環境で非対応：${(edge.dependency_compatibility.reasons || []).join(" / ")}` : edge.version_status === "below_minimum" ? `必要 ${edge.required_version} / 解決済み ${edge.resolved_version}` : edge.availability === "installed_in_project" && edge.required_version ? "解決済み・版の適合は未判定" : edge.selected_in_plan ? "構成に含む・導入未確認" : edge.availability === "owned_not_confirmed_installed" ? "所有情報あり・導入未確認" : "導入・解決未確認"}）`);
+      card.append(element("p", "risk", `依存関係の確認：${pending.join(" / ")}`));
+    }
+    if (plan.dependency_review?.shared_dependencies?.length) card.append(element("p", "muted", `共通依存：${plan.dependency_review.shared_dependencies.map(item => `${(item.candidates || []).map(id => graphLabels.get(id) || id).join("・")} → ${graphLabels.get(item.dependency) || item.dependency}${item.required_versions.length ? `（要求: ${item.required_versions.join(" / ")}）` : ""}`).join(" / ")}。相互動作は未検証。`));
+    if (plan.planning_dependency_issues?.length) card.append(element("p", "risk", "依存の版不足・対象環境の非対応は、構成の比較時に減点しています。更新などで解消できる可能性があります。"));
+    if (plan.dependency_review?.truncated) card.append(element("p", "risk", "依存関係の探索上限に到達しました。全件ではありません。"));
     if (plan.missing?.length) card.append(element("p", "risk", `不足：${plan.missing.join(" / ")}`));
     root.append(card);
   });
@@ -518,11 +569,17 @@ function candidateCard(item, index) {
     inventoryLabel(candidate),
     candidate.license || "",
     candidate.version ? `v${candidate.version}` : "",
-    candidate.compatibility?.status === "compatible" ? "互換性確認済み" : "",
+    candidate.compatibility?.status === "compatible" ? "商品表で対象環境に対応" : "",
   ], meta, candidate.ownership !== "candidate" ? "owned" : "source");
   body.append(meta);
+  if (artStyleInfo(candidate)) body.append(element("p", "muted", artStyleInfo(candidate)));
   if (item.reasons?.length) body.append(element("div", "reason", `根拠：${item.reasons.join(" / ")}`));
   if (item.risks?.length) body.append(element("div", "risk", `確認：${item.risks.join(" / ")}`));
+  if (item.planning_dependency_issues?.length) {
+    const labels = new Map((lastResult?.planning_graph?.nodes || []).map(node => [node.id, node.label]));
+    body.append(element("p", "risk", `構成比較で減点：${item.planning_dependency_issues.map(issue => `${(issue.path || []).map(id => labels.get(id) || id).join(" → ")}（${issue.kind === "below_minimum" ? `必要 ${issue.required_version} / 解決済み ${issue.resolved_version}` : "依存先が対象環境に非対応"}）`).join(" / ")}`));
+    body.append(element("p", "muted", `適合度 ${Math.round(item.score)} / 依存を考慮 ${Math.round(item.planning_score)}`));
+  }
   const actions = element("div", "candidate-actions");
   actions.append(assetActionButtons(candidate));
   actions.append(validationActionButtons(candidate));
@@ -549,6 +606,9 @@ function renderRecommendations(result) {
 function renderAssetSearches(result) {
   const root = $("#asset-searches");
   root.replaceChildren();
+  if (!result.asset_store_searches.length) {
+    root.append(element("p", "muted", "未充足の要件はありません。候補の互換性と依存関係は別途確認してください。"));
+  }
   result.asset_store_searches.forEach((search) => {
     const link = element("a", "", `${search.title} ↗`);
     link.href = safeUrl(search.url);
@@ -650,6 +710,7 @@ function catalogCard(candidate) {
   }
   chips(candidate.categories || [], labels);
   card.append(assetThumbnail(candidate), labels, element("h3", "", candidate.title));
+  if (artStyleInfo(candidate)) card.append(element("p", "muted", artStyleInfo(candidate)));
   card.append(element("p", "", candidate.description || "説明なし"));
   const details = candidate.metadata?.asset_store_details;
   if (details) {
@@ -681,6 +742,10 @@ function catalogCard(candidate) {
   const actions = element("div", "catalog-actions");
   actions.append(assetActionButtons(candidate));
   actions.append(validationActionButtons(candidate));
+  const artButton = element("button", "", "画風タグを編集");
+  artButton.type = "button";
+  artButton.addEventListener("click", () => editArtStyle(candidate));
+  actions.append(artButton);
   const url = safeUrl(candidate.url);
   if (url) {
     const link = element("a", "", "開く ↗");
@@ -861,6 +926,22 @@ function restorePreferences() {
 }
 
 function bind() {
+  const closeArtStyle = () => $("#art-style-dialog").close();
+  $("#close-art-style").addEventListener("click", closeArtStyle);
+  $("#cancel-art-style").addEventListener("click", closeArtStyle);
+  $("#art-style-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = event.submitter;
+    button.disabled = true;
+    try {
+      const styles = $("#art-style-input").value.split(/[,、]/).map(s => s.trim()).filter(Boolean);
+      await api("/api/catalog/art-styles", {method: "POST", body: JSON.stringify({candidate_id: artStyleCandidate.id, styles})});
+      closeArtStyle();
+      await loadCatalog();
+      showToast("画風タグを保存しました。構成を再生成すると反映されます。");
+    } catch (error) { $("#art-style-message").textContent = error.message; }
+    finally { button.disabled = false; }
+  });
   $("#show-asset-images").checked = localStorage.getItem("fafnir.showAssetImages") !== "false";
   $("#show-asset-images").addEventListener("change", () => {
     localStorage.setItem("fafnir.showAssetImages", String($("#show-asset-images").checked));

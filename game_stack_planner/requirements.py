@@ -278,12 +278,37 @@ def _normalized(value: str) -> str:
 
 def _contains(text: str, keyword: str) -> bool:
     normalized_keyword = _normalized(keyword)
+    if normalized_keyword not in text:
+        return False
     if re.fullmatch(r"[a-z0-9 _-]+", normalized_keyword):
         return bool(re.search(
             rf"(?<![a-z0-9]){re.escape(normalized_keyword)}(?![a-z0-9])",
             text,
         ))
     return normalized_keyword in text
+
+
+def excluded_requirements(prompt: str) -> dict[str, str]:
+    """Recognize only explicit, local negations; do not infer omitted features."""
+    text = _normalized(prompt)
+    excluded: dict[str, str] = {}
+    for capability in _CAPABILITIES:
+        for keyword in capability.keywords:
+            term = _normalized(keyword)
+            if term not in text:
+                continue
+            boundary = r"(?<![a-z0-9])" if re.fullmatch(r"[a-z0-9 _-]+", term) else ""
+            end = r"(?![a-z0-9])" if boundary else ""
+            target = boundary + re.escape(term) + end
+            before = r"(?:\bno\s+|\bwithout\s+|不要な\s*)" + target
+            after = target + r"\s*(?:は|を|が)?\s*(?:不要|なし|無し|使わない|利用しない|対応しない)(?!ではない|じゃない|とは限らない|では困る)"
+            after += r"|" + target + r"\s+not\s+(?:required|needed|supported)\b"
+            if re.search(before, text) or re.search(after, text):
+                excluded[capability.key] = f"明示的に不要・無効: {keyword}"
+                break
+    if "networking" in excluded:
+        excluded.setdefault("lobby_matchmaking", "通信機能が不要のため自動追加しない")
+    return excluded
 
 
 def derive_requirements(
@@ -295,16 +320,19 @@ def derive_requirements(
     """Return a bounded, explainable requirement list."""
 
     text = _normalized(prompt)
+    excluded = excluded_requirements(prompt)
     selected: dict[str, str] = {}
     for capability in _CAPABILITIES:
-        if any(_contains(text, keyword) for keyword in capability.keywords):
+        if capability.key not in excluded and any(_contains(text, keyword) for keyword in capability.keywords):
             selected[capability.key] = "high"
     for triggers, expansions in _ARCHETYPE_EXPANSIONS:
         if any(_contains(text, trigger) for trigger in triggers):
             for key in expansions:
-                selected.setdefault(key, "high")
+                if key not in excluded:
+                    selected.setdefault(key, "high")
     for key in _BASELINE_KEYS:
-        selected.setdefault(key, "normal")
+        if key not in excluded:
+            selected.setdefault(key, "normal")
     if platform in {"mobile", "android", "ios"}:
         selected["mobile"] = "high"
         selected["input"] = "high"
@@ -312,9 +340,11 @@ def derive_requirements(
         selected["xr"] = "high"
         selected["input"] = "high"
     if "networking" in selected:
-        selected.setdefault("lobby_matchmaking", "normal")
+        if "lobby_matchmaking" not in excluded:
+            selected.setdefault("lobby_matchmaking", "normal")
     if "character_controller" in selected:
-        selected.setdefault("camera", "normal")
+        if "camera" not in excluded:
+            selected.setdefault("camera", "normal")
 
     definitions = {item.key: item for item in _CAPABILITIES}
     index = {item.key: position for position, item in enumerate(_CAPABILITIES)}
@@ -343,4 +373,4 @@ def requirement_categories() -> tuple[dict[str, str], ...]:
     )
 
 
-__all__ = ["derive_requirements", "requirement_categories"]
+__all__ = ["derive_requirements", "excluded_requirements", "requirement_categories"]

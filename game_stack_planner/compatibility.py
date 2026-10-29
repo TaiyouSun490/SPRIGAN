@@ -3,11 +3,20 @@
 from __future__ import annotations
 
 from hashlib import sha256
+import json
 from pathlib import Path
 import re
 from typing import Any
 
 from .models import Candidate, ProjectSnapshot
+
+
+def project_state_fingerprint(project: ProjectSnapshot) -> str:
+    """Fingerprint relevant inputs; the digest contains no raw package references."""
+    state = {"unity": project.unity_version, "pipeline": project.render_pipeline,
+             "pipeline_evidence": project.render_pipeline_evidence, "input": project.input_backend,
+             "packages": sorted((p.id, p.version or "") for p in project.packages), "lock": project.package_lock}
+    return sha256(json.dumps(state, sort_keys=True, ensure_ascii=True, default=str).encode("utf-8")).hexdigest()
 
 
 def _unity_key(value: str | None) -> tuple[int, ...] | None:
@@ -27,7 +36,7 @@ def _project_pipeline(value: str) -> str | None:
         return "urp"
     if normalized == "hdrp":
         return "hdrp"
-    if normalized in {"built-in", "built_in", "built-in-or-custom"}:
+    if normalized in {"built-in", "built_in"}:
         return "built_in"
     return None
 
@@ -68,7 +77,12 @@ def assess_candidate_compatibility(
             ).hexdigest()[:24]
         except OSError:
             fingerprint = ""
-        if fingerprint and fingerprint == str(local_project.get("fingerprint") or ""):
+        same_project = fingerprint and fingerprint == str(local_project.get("fingerprint") or "")
+        same_state = (same_project and local_project.get("state_fingerprint") == project_state_fingerprint(project)
+                      and local_project.get("platform") == platform)
+        if same_project and not same_state:
+            result["local_warnings"].append("過去の検査は現在のプロジェクト状態・対象環境と一致せず、再検査が必要")
+        if same_state:
             local_status = str(
                 local_validation.get("overall_status") or "unknown"
             )
@@ -122,6 +136,10 @@ def assess_candidate_compatibility(
         result["reasons"].append(
             "プロジェクトのUnityが商品のOriginal Unity versionより古い"
         )
+        return result
+
+    if project.render_pipeline_evidence == "package_presence_only":
+        result["reasons"].append("Render Pipelineは導入パッケージからの推定で、実際の有効設定は未確認")
         return result
 
     raw_matrix = details.get("render_pipeline_compatibility")

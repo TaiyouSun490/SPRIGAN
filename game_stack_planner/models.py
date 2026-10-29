@@ -56,9 +56,15 @@ class ProjectSnapshot:
     product_name: str | None = None
     company_name: str | None = None
     warnings: tuple[str, ...] = ()
+    # Resolved lock entries include transitive packages, not just manifest entries.
+    package_lock: dict[str, Any] = field(default_factory=dict)
+    render_pipeline_evidence: str = "explicit"
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        value = {
             **asdict(self),
             "packages": [item.to_dict() for item in self.packages],
         }
+        # The lock is internal analysis input; Git/local references may be sensitive.
+        value.pop("package_lock", None)
+        return value

@@ -91,6 +91,7 @@ def _candidate_evidence(value: dict[str, Any]) -> dict[str, Any]:
         "ownership_evidence": value.get("ownership_evidence"),
         "categories": list(value.get("categories") or [])[:20],
         "tags": list(value.get("tags") or [])[:24],
+        "art_styles": value.get("art_styles") or {"user": [], "text_hints": []},
         "license": value.get("license"),
         "version": value.get("version"),
         "unity_version": value.get("unity_version"),
@@ -430,8 +431,10 @@ class StackforgeMcpTools:
                 options.append({
                     "candidate": _candidate_evidence(item["candidate"]),
                     "local_score": item["score"],
+                    "planning_score": item.get("planning_score", item["score"]),
                     "reasons": item.get("reasons", []),
                     "risks": item.get("risks", []),
+                    "planning_dependency_issues": item.get("planning_dependency_issues", []),
                 })
             candidate_groups.append({
                 "requirement": requirement,
@@ -445,7 +448,16 @@ class StackforgeMcpTools:
                 "selected_candidate_ids": [
                     item["candidate"]["id"] for item in plan["selected"]
                 ],
+                "coverage_evidence": [
+                    {"candidate_id": item["candidate"]["id"], "covers": item["covers"],
+                     "by_requirement": item.get("coverage_evidence", {})}
+                    for item in plan["selected"]
+                ],
                 "missing": plan["missing"],
+                "unresolved_dependencies": plan.get("unresolved_dependencies", []),
+                "dependency_review": plan.get("dependency_review", {}),
+                "planning_dependency_issues": plan.get("planning_dependency_issues", []),
+                "selection_method": plan.get("selection_method"),
             }
             for plan in result["plans"]
         ]
@@ -455,7 +467,12 @@ class StackforgeMcpTools:
             "budget": result["budget"],
             "project": result["project"],
             "candidate_groups": candidate_groups,
+            "excluded_requirements": result.get("excluded_requirements", {}),
+            "inferred_context": result.get("inferred_context", []),
+            "inferred_art_styles": result.get("inferred_art_styles", []),
             "strategy_plans": strategy_plans,
+            "planning_graph": result.get("planning_graph", {}),
+            "planning_diagnostics": result.get("planning_diagnostics", {}),
             "official_asset_store_searches": result["asset_store_searches"],
             "source_status": result["source_status"],
             "visual_review": {

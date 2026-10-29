@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from .models import Candidate
+from .art_styles import candidate_styles
 
 
 SEARCH_SCOPES = (
@@ -40,8 +41,9 @@ def inventory_state(candidate: Candidate) -> str:
     return "unknown"
 
 
-def candidate_view(candidate: Candidate) -> dict[str, Any]:
+def candidate_view(candidate: Candidate, *, art_styles: dict[str, list[str]] | None = None) -> dict[str, Any]:
     value = candidate.to_dict()
+    value["art_styles"] = candidate_styles(candidate) if art_styles is None else {k: list(v) for k, v in art_styles.items()}
     state = inventory_state(candidate)
     value["scope"] = candidate_scope(candidate)
     value["inventory_state"] = state

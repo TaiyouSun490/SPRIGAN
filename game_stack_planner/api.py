@@ -118,6 +118,18 @@ def _only_fields(payload: dict[str, Any], allowed: set[str]) -> None:
 
 
 class GameStackApplication:
+    def set_art_styles(self, payload: dict[str, Any]) -> dict[str, Any]:
+        _only_fields(payload, {"candidate_id", "styles"})
+        candidate_id = _text(payload.get("candidate_id"), name="candidate_id", required=True, maximum=300)
+        styles = payload.get("styles")
+        if not isinstance(styles, list) or len(styles) > 20 or any(not isinstance(s, str) or not s.strip() or len(s.strip()) > 60 for s in styles):
+            raise ApiError(400, "invalid_request", "タグは20件以内、各60文字以内で入力してください。")
+        clean = list(dict.fromkeys(s.strip() for s in styles))
+        result = self.repository.set_art_styles(candidate_id, clean)
+        if result is None:
+            raise ApiError(404, "candidate_not_found", "アセットが見つかりません。")
+        return {"candidate": candidate_view(result)}
+
     def __init__(
         self,
         db_path: str | Path | None = None,

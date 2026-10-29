@@ -83,7 +83,7 @@
             <div id="project-summary" class="project-summary hidden"></div>
 
             <label class="switch-row">
-              <span><strong>外部候補を含める</strong><small>不足時にGitHub / OpenUPMを検索</small></span>
+              <span><strong>外部候補を含める</strong><small>要件に応じてGitHub / OpenUPMを検索</small></span>
               <input id="remote" type="checkbox" checked>
               <i aria-hidden="true"></i>
             </label>
@@ -204,6 +204,17 @@
     </main>
   </div>
 
+  <dialog id="art-style-dialog">
+    <form id="art-style-form">
+      <div class="modal-head"><h2>画風タグ</h2><button type="button" id="close-art-style" aria-label="閉じる">×</button></div>
+      <p id="art-style-title"></p>
+      <p>自分で確認した画風をカンマ区切りで保存。空にすると自分のタグを消去します。</p>
+      <label>画風タグ<input id="art-style-input" type="text" maxlength="1200" placeholder="例：リアル, 手描き風"></label>
+      <p id="art-style-hints" class="muted"></p>
+      <p id="art-style-message" class="form-message" role="status"></p>
+      <div class="modal-actions"><button type="button" id="cancel-art-style" class="button secondary">キャンセル</button><button type="submit" class="button primary">保存</button></div>
+    </form>
+  </dialog>
   <dialog id="pin-dialog">
     <form id="pin-form">
       <div class="modal-head"><div><p class="kicker">CANDIDATE</p><h2>商品候補</h2></div><button type="button" id="close-pin-button" aria-label="閉じる">×</button></div>

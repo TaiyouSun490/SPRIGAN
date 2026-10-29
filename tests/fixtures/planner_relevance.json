@@ -1,0 +1,20 @@
+{
+  "description": "Small synthetic, manually judged regression set; not a representative performance benchmark.",
+  "candidates": [
+    {"id":"local:forest-real","title":"Realistic Forest Vegetation", "categories":["visual_assets"]},
+    {"id":"local:forest-stylized","title":"Stylized Forest Vegetation", "categories":["visual_assets"]},
+    {"id":"local:city","title":"City Urban Street Buildings", "categories":["visual_assets"]},
+    {"id":"local:underwater","title":"Underwater Research Laboratory Environment", "categories":["visual_assets"]},
+    {"id":"local:alpine","title":"Alpine Mountain Environment", "categories":["visual_assets"]},
+    {"id":"local:inventory","title":"Inventory Item Management", "categories":["inventory"]},
+    {"id":"local:audio","title":"Footstep Sound Effects", "categories":["audio"]},
+    {"id":"local:camera","title":"Third Person Camera", "categories":["camera"]}
+  ],
+  "cases": [
+    {"id":"forest-realistic","prompt":"リアルな森を探索", "requirement":"visual_assets", "judgments":{"local:forest-real":3,"local:forest-stylized":1,"local:city":0,"local:underwater":0,"local:alpine":1}},
+    {"id":"underwater","prompt":"水中を探索するゲーム", "requirement":"visual_assets", "judgments":{"local:underwater":3,"local:forest-real":0,"local:forest-stylized":0,"local:city":0,"local:alpine":0}},
+    {"id":"urban","prompt":"都市を探索", "requirement":"visual_assets", "judgments":{"local:city":3,"local:forest-real":0,"local:forest-stylized":0,"local:underwater":0,"local:alpine":0}},
+    {"id":"inventory","prompt":"持ち物とインベントリを管理", "requirement":"inventory", "judgments":{"local:inventory":3,"local:camera":0,"local:audio":0}},
+    {"id":"footsteps","prompt":"足音を使う音響", "requirement":"audio", "judgments":{"local:audio":3,"local:inventory":0,"local:camera":0}}
+  ]
+}

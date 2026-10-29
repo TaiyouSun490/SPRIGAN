@@ -200,6 +200,11 @@ def scan_unity_project(path: str | Path) -> ProjectSnapshot:
         product_name=_project_setting(project_settings_text, "productName"),
         company_name=_project_setting(project_settings_text, "companyName"),
         warnings=tuple(dict.fromkeys(warnings)),
+        package_lock={str(name): {"version": str(value.get("version") or ""),
+                                  "dependencies": value.get("dependencies") if isinstance(value.get("dependencies"), dict) else {},
+                                  "depth": value.get("depth")}
+                      for name, value in lock_dependencies.items() if isinstance(value, dict)},
+        render_pipeline_evidence="package_presence_only",
     )
 
 
